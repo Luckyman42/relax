@@ -1,5 +1,8 @@
 # Relax
 
+**Relax**, don't *Panic*.
+`Throw` failures upward — even if they `Must` — then `Handle` them at the boundary.
+
 Relax is a small Go toolkit for structured, typed panic-based propagation inside trusted internal paths.
 It is designed to reduce boilerplate where many layers only forward errors without handling them.
 
@@ -11,10 +14,11 @@ It is a companion for internal call chains where explicit forwarding becomes noi
 The library provides:
 - a typed propagation wrapper: `Throwable`
 - `Throw(...)` for intentional propagation
-- `Unwind(...)` boundaries that recover only `Throwable`
+- `Handle(...)` boundaries that recover only `Throwable`
 - helper forms like `Must`, `Must0`, `Must2`, and `Must3`
 
 That means:
+- `Must` escalates failure through structured propagation, not "program invalid" semantics.
 - only errors intentionally thrown through Relax are recovered
 - runtime panics and programmer errors still behave like normal panics
 - metadata can be attached without changing function signatures
@@ -57,6 +61,8 @@ Relax lets you keep the propagation path cleaner while still preserving explicit
 
 One important benefit is visibility: if a thrown error is not recovered, it will surface as a `Throwable` panic instead of silently disappearing as an ignored error return.
 That makes it easier to catch forgotten handling paths during runtime, rather than letting a dropped `error` value hide a bug.
+
+In other words, an unhandled `Throwable` is noisier than an ignored error return, which helps force the developer to treat failures explicitly.
 
 Traditional explicit error handling allows developers to accidentally ignore errors:
 
@@ -118,7 +124,7 @@ func Service() string {
 }
 
 func Handler() {
-    result, err := relax.Unwind(func() string {
+    result, err := relax.Handle(func() string {
         return Service()
     })
     if err != nil {
@@ -142,23 +148,49 @@ func validateInput(input string) {
 }
 ```
 
+## Inspecting Must-originated failures
+
+`Must` does not mean "program invalid" in this library.
+It means "escalate the failure through structured propagation." When `Must` throws, it marks the `Throwable` with `must: true` so a boundary can detect the propagation style.
+
+```go
+func Handler() {
+    result, err := relax.Handle(func() string {
+        return relax.Must(fetchData())
+    })
+    if err != nil {
+        var throwable relax.Throwable
+        if errors.As(err, &throwable) && throwable.Context["must"] == true {
+            // this failure was escalated through Must
+            log.Printf("escalated failure: %s", throwable.Err)
+        }
+        // handle or rethrow
+        return
+    }
+    fmt.Println(result)
+}
+```
+
 ## API
 
 - `Throw(err error, keyVals ...any)`: Panics with a `Throwable` wrapping the error and optional context.
-- `Unwind[T any](fn func() T) (T, error)`: Executes `fn` and recovers only `Throwable` panics.
-- `Unwind0(fn func()) error`: Executes a function with no return values and recovers `Throwable` panics.
-- `Unwind2[T1 any, T2 any](fn func() (T1, T2)) (T1, T2, error)`: Recovers `Throwable` panics from a two-value function.
-- `Unwind3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (T1, T2, T3, error)`: Recovers `Throwable` panics from a three-value function.
+- `Handle[T any](fn func() T) (T, error)`: Executes `fn` and recovers only `Throwable` panics.
+- `Handle0(fn func()) error`: Executes a function with no return values and recovers `Throwable` panics.
+- `Handle2[T1 any, T2 any](fn func() (T1, T2)) (T1, T2, error)`: Recovers `Throwable` panics from a two-value function.
+- `Handle3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (T1, T2, T3, error)`: Recovers `Throwable` panics from a three-value function.
 - `Must[T any](v T, err error) T`: Throws if `err` is not nil, otherwise returns `v`.
+  It escalates failure through structured propagation, not "program invalid" semantics.
 - `Must0(err error)`: Throws if `err` is not nil for functions that return only error.
 - `Must2[T1 any, T2 any](v1 T1, v2 T2, err error) (T1, T2)`: Throws if `err` is not nil and returns two values.
 - `Must3[T1 any, T2 any, T3 any](v1 T1, v2 T2, v3 T3, err error) (T1, T2, T3)`: Throws if `err` is not nil and returns three values.
 - `Throwable`: Implements `error`, preserves stack traces, timestamp, and optional context.
 
+- `Must` adds `must: true` metadata to the thrown `Throwable`, so the recovery site can tell if the error escalated through `Must` rather than being thrown directly.
+
 ## Safety
 
 - Only `Throwable` panics are caught; runtime panics are re-panicked.
-- Use `Unwind` at well-defined boundaries, not inside every helper.
+- Use `Handle` at well-defined boundaries, not inside every helper.
 - Keep cleanup explicit with `defer`.
 
 ## Trade-offs

@@ -62,10 +62,10 @@ func Throw(err error, keyVals ...any) {
 	panic(newThrowable(err, keyVals...))
 }
 
-// Unwind executes the given function and recovers only Throwable panics,
+// Handle executes the given function and recovers only Throwable panics,
 // converting them back to errors. Other panics are re-panicked.
 // This provides a safe recovery boundary.
-func Unwind[T any](fn func() T) (result T, err error) {
+func Handle[T any](fn func() T) (result T, err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -84,8 +84,8 @@ func Unwind[T any](fn func() T) (result T, err error) {
 	return
 }
 
-// Unwind0 recovers from Throwable panics in a function that returns no values.
-func Unwind0(fn func()) (err error) {
+// Handle0 recovers from Throwable panics in a function that returns no values.
+func Handle0(fn func()) (err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -104,8 +104,8 @@ func Unwind0(fn func()) (err error) {
 	return
 }
 
-// Unwind2 recovers from Throwable panics in a function that returns two values.
-func Unwind2[T1 any, T2 any](fn func() (T1, T2)) (result1 T1, result2 T2, err error) {
+// Handle2 recovers from Throwable panics in a function that returns two values.
+func Handle2[T1 any, T2 any](fn func() (T1, T2)) (result1 T1, result2 T2, err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -124,8 +124,8 @@ func Unwind2[T1 any, T2 any](fn func() (T1, T2)) (result1 T1, result2 T2, err er
 	return
 }
 
-// Unwind3 recovers from Throwable panics in a function that returns three values.
-func Unwind3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (result1 T1, result2 T2, result3 T3, err error) {
+// Handle3 recovers from Throwable panics in a function that returns three values.
+func Handle3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (result1 T1, result2 T2, result3 T3, err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -148,7 +148,7 @@ func Unwind3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (result1 T1, result
 // Otherwise, returns v. This reduces boilerplate in error propagation.
 func Must[T any](v T, err error) T {
 	if err != nil {
-		Throw(err)
+		Throw(err, "must", true)
 	}
 	return v
 }
@@ -156,14 +156,14 @@ func Must[T any](v T, err error) T {
 // Must0 throws if err is not nil and otherwise returns nothing.
 func Must0(err error) {
 	if err != nil {
-		Throw(err)
+		Throw(err, "must", true)
 	}
 }
 
 // Must2 throws if err is not nil and otherwise returns two values.
 func Must2[T1 any, T2 any](v1 T1, v2 T2, err error) (T1, T2) {
 	if err != nil {
-		Throw(err)
+		Throw(err, "must", true)
 	}
 	return v1, v2
 }
@@ -171,7 +171,7 @@ func Must2[T1 any, T2 any](v1 T1, v2 T2, err error) (T1, T2) {
 // Must3 throws if err is not nil and otherwise returns three values.
 func Must3[T1 any, T2 any, T3 any](v1 T1, v2 T2, v3 T3, err error) (T1, T2, T3) {
 	if err != nil {
-		Throw(err)
+		Throw(err, "must", true)
 	}
 	return v1, v2, v3
 }

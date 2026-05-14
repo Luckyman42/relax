@@ -39,9 +39,9 @@ func ExampleMust0() {
 	// Output: done
 }
 
-// ExampleUnwind demonstrates safe recovery.
-func ExampleUnwind() {
-	result, err := relax.Unwind(func() string {
+// ExampleHandle demonstrates safe recovery.
+func ExampleHandle() {
+	result, err := relax.Handle(func() string {
 		// Simulate a call chain with Must
 		data := relax.Must(parseData("input"))
 		return relax.Must(processData(data))

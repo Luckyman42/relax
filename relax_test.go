@@ -53,8 +53,8 @@ func TestThrow_Context(t *testing.T) {
 	Throw(errors.New("context error"), "user", "alice", "attempt", 3)
 }
 
-func TestUnwind_Success(t *testing.T) {
-	result, err := Unwind(func() int {
+func TestHandle_Success(t *testing.T) {
+	result, err := Handle(func() int {
 		return 42
 	})
 	if err != nil {
@@ -65,8 +65,8 @@ func TestUnwind_Success(t *testing.T) {
 	}
 }
 
-func TestUnwind_Throwable(t *testing.T) {
-	result, err := Unwind(func() int {
+func TestHandle_Throwable(t *testing.T) {
+	result, err := Handle(func() int {
 		Throw(errors.New("thrown error"))
 		return 0
 	})
@@ -85,7 +85,7 @@ func TestUnwind_Throwable(t *testing.T) {
 	}
 }
 
-func TestUnwind_OtherPanic(t *testing.T) {
+func TestHandle_OtherPanic(t *testing.T) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -96,7 +96,7 @@ func TestUnwind_OtherPanic(t *testing.T) {
 		}
 	}()
 
-	_, _ = Unwind(func() int {
+	_, _ = Handle(func() int {
 		panic("other panic")
 	})
 }
@@ -125,6 +125,9 @@ func TestMust0_Error(t *testing.T) {
 		if throwable.Err.Error() != "must0 error" {
 			t.Errorf("Expected 'must0 error', got '%s'", throwable.Err.Error())
 		}
+		if throwable.Context["must"] != true {
+			t.Errorf("Expected must=true, got %v", throwable.Context["must"])
+		}
 	}()
 
 	Must0(errors.New("must0 error"))
@@ -149,6 +152,9 @@ func TestMust2_Error(t *testing.T) {
 		}
 		if throwable.Err.Error() != "must2 error" {
 			t.Errorf("Expected 'must2 error', got '%s'", throwable.Err.Error())
+		}
+		if throwable.Context["must"] != true {
+			t.Errorf("Expected must=true, got %v", throwable.Context["must"])
 		}
 	}()
 
@@ -175,13 +181,16 @@ func TestMust3_Error(t *testing.T) {
 		if throwable.Err.Error() != "must3 error" {
 			t.Errorf("Expected 'must3 error', got '%s'", throwable.Err.Error())
 		}
+		if throwable.Context["must"] != true {
+			t.Errorf("Expected must=true, got %v", throwable.Context["must"])
+		}
 	}()
 
 	Must3(0, "", false, errors.New("must3 error"))
 }
 
-func TestUnwind0_Success(t *testing.T) {
-	err := Unwind0(func() {
+func TestHandle0_Success(t *testing.T) {
+	err := Handle0(func() {
 		// no thrown error
 	})
 	if err != nil {
@@ -189,8 +198,8 @@ func TestUnwind0_Success(t *testing.T) {
 	}
 }
 
-func TestUnwind0_Throwable(t *testing.T) {
-	err := Unwind0(func() {
+func TestHandle0_Throwable(t *testing.T) {
+	err := Handle0(func() {
 		Throw(errors.New("unwind0 error"))
 	})
 	if err == nil {
@@ -205,8 +214,8 @@ func TestUnwind0_Throwable(t *testing.T) {
 	}
 }
 
-func TestUnwind2_Throwable(t *testing.T) {
-	_, _, err := Unwind2(func() (int, string) {
+func TestHandle2_Throwable(t *testing.T) {
+	_, _, err := Handle2(func() (int, string) {
 		Throw(errors.New("unwind2 error"))
 		return 0, ""
 	})
@@ -222,8 +231,8 @@ func TestUnwind2_Throwable(t *testing.T) {
 	}
 }
 
-func TestUnwind3_Throwable(t *testing.T) {
-	_, _, _, err := Unwind3(func() (int, string, bool) {
+func TestHandle3_Throwable(t *testing.T) {
+	_, _, _, err := Handle3(func() (int, string, bool) {
 		Throw(errors.New("unwind3 error"))
 		return 0, "", false
 	})
@@ -251,6 +260,9 @@ func TestMust_Error(t *testing.T) {
 		}
 		if throwable.Err.Error() != "must error" {
 			t.Errorf("Expected 'must error', got '%s'", throwable.Err.Error())
+		}
+		if throwable.Context["must"] != true {
+			t.Errorf("Expected must=true, got %v", throwable.Context["must"])
 		}
 	}()
 
