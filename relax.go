@@ -1,6 +1,7 @@
 package relax
 
 import (
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"time"
@@ -53,13 +54,84 @@ func newThrowable(err error, keyVals ...any) Throwable {
 }
 
 // Throw panics with a Throwable wrapping the given error.
-// Any extra key/value pairs are stored in Throwable.Context.
+// If err is already a Throwable, it is re-panicked directly.
+// If extra key/value pairs are provided, they are merged into the Throwable context.
 // If err is nil, it does nothing.
 func Throw(err error, keyVals ...any) {
 	if err == nil {
 		return
 	}
-	panic(newThrowable(err, keyVals...))
+
+	switch t := err.(type) {
+	case Throwable:
+		if len(keyVals) == 0 {
+			panic(t)
+		}
+		if t.Context == nil {
+			t.Context = make(map[string]any)
+		}
+		for i := 0; i < len(keyVals); i += 2 {
+			key := fmt.Sprint(keyVals[i])
+			var value any
+			if i+1 < len(keyVals) {
+				value = keyVals[i+1]
+			}
+			t.Context[key] = value
+		}
+		panic(t)
+	case *Throwable:
+		if t == nil {
+			return
+		}
+		copy := *t
+		if len(keyVals) == 0 {
+			panic(copy)
+		}
+		if copy.Context == nil {
+			copy.Context = make(map[string]any)
+		}
+		for i := 0; i < len(keyVals); i += 2 {
+			key := fmt.Sprint(keyVals[i])
+			var value any
+			if i+1 < len(keyVals) {
+				value = keyVals[i+1]
+			}
+			copy.Context[key] = value
+		}
+		panic(copy)
+	default:
+		panic(newThrowable(err, keyVals...))
+	}
+}
+
+// ParseError converts any error into a Throwable.
+// If err is already a Throwable, it is returned unchanged.
+// Otherwise the error is wrapped into a new Throwable.
+func ParseError(err error) Throwable {
+	if err == nil {
+		return Throwable{}
+	}
+
+	var throwable Throwable
+	if errors.As(err, &throwable) {
+		return throwable
+	}
+
+	return newThrowable(err)
+}
+
+// IsMust reports whether err is a Throwable propagated through Must.
+func IsMust(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var throwable Throwable
+	if !errors.As(err, &throwable) {
+		return false
+	}
+
+	return throwable.Context != nil && throwable.Context["must"] == true
 }
 
 // Handle executes the given function and recovers only Throwable panics,

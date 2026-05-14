@@ -53,6 +53,53 @@ func TestThrow_Context(t *testing.T) {
 	Throw(errors.New("context error"), "user", "alice", "attempt", 3)
 }
 
+func TestThrow_ExistingThrowableRepanicsPlainly(t *testing.T) {
+	orig := Throwable{Err: errors.New("existing throwable"), Context: map[string]any{"a": 1}}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Expected panic, but none occurred")
+		}
+		throwable, ok := r.(Throwable)
+		if !ok {
+			t.Fatalf("Expected Throwable, got %T", r)
+		}
+		if throwable.Err.Error() != "existing throwable" {
+			t.Errorf("Expected 'existing throwable', got '%s'", throwable.Err.Error())
+		}
+		if throwable.Context["a"] != 1 {
+			t.Errorf("Expected context a=1, got %v", throwable.Context["a"])
+		}
+	}()
+
+	Throw(orig)
+}
+
+func TestThrow_ExistingThrowableMergesContext(t *testing.T) {
+	orig := Throwable{Err: errors.New("existing throwable"), Context: map[string]any{"a": 1}}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Expected panic, but none occurred")
+		}
+		throwable, ok := r.(Throwable)
+		if !ok {
+			t.Fatalf("Expected Throwable, got %T", r)
+		}
+		if throwable.Err.Error() != "existing throwable" {
+			t.Errorf("Expected 'existing throwable', got '%s'", throwable.Err.Error())
+		}
+		if throwable.Context["a"] != 3 {
+			t.Errorf("Expected context a=3, got %v", throwable.Context["a"])
+		}
+		if throwable.Context["b"] != "two" {
+			t.Errorf("Expected context b='two', got %v", throwable.Context["b"])
+		}
+	}()
+
+	Throw(orig, "a", 3, "b", "two")
+}
+
 func TestHandle_Success(t *testing.T) {
 	result, err := Handle(func() int {
 		return 42
@@ -274,6 +321,56 @@ func TestThrowable_Error(t *testing.T) {
 	throwable := Throwable{Err: err}
 	if throwable.Error() != "underlying" {
 		t.Errorf("Expected 'underlying', got '%s'", throwable.Error())
+	}
+}
+
+func TestIsMust_ReturnsTrueForMustThrownError(t *testing.T) {
+	_, err := Handle(func() string {
+		return Must("ok", errors.New("must fail"))
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got nil")
+	}
+	if !IsMust(err) {
+		t.Error("Expected IsMust to return true for Must-thrown Throwable")
+	}
+}
+
+func TestIsMust_ReturnsFalseForDirectThrow(t *testing.T) {
+	_, err := Handle(func() string {
+		Throw(errors.New("fail"))
+		return ""
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got nil")
+	}
+	if IsMust(err) {
+		t.Error("Expected IsMust to return false for direct Throw")
+	}
+}
+
+func TestIsMust_ReturnsFalseForNonThrowableError(t *testing.T) {
+	if IsMust(errors.New("plain error")) {
+		t.Error("Expected IsMust to return false for non-Throwable error")
+	}
+}
+
+func TestParseError_ReturnsExistingThrowable(t *testing.T) {
+	existing := Throwable{Err: errors.New("existing")}
+	parsed := ParseError(existing)
+	if parsed.Err == nil || parsed.Err.Error() != "existing" {
+		t.Fatalf("Expected existing throwable error, got %v", parsed.Err)
+	}
+}
+
+func TestParseError_WrapsNonThrowableError(t *testing.T) {
+	err := errors.New("plain")
+	parsed := ParseError(err)
+	if parsed.Err == nil || parsed.Err.Error() != "plain" {
+		t.Fatalf("Expected wrapped error, got %v", parsed.Err)
+	}
+	if parsed.Context != nil {
+		t.Errorf("Expected nil context for wrapped error, got %v", parsed.Context)
 	}
 }
 

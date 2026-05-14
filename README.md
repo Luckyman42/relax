@@ -159,10 +159,9 @@ func Handler() {
         return relax.Must(fetchData())
     })
     if err != nil {
-        var throwable relax.Throwable
-        if errors.As(err, &throwable) && throwable.Context["must"] == true {
+        if relax.IsMust(err) {
             // this failure was escalated through Must
-            log.Printf("escalated failure: %s", throwable.Err)
+            log.Printf("escalated failure: %s", err)
         }
         // handle or rethrow
         return
@@ -178,6 +177,8 @@ func Handler() {
 - `Handle0(fn func()) error`: Executes a function with no return values and recovers `Throwable` panics.
 - `Handle2[T1 any, T2 any](fn func() (T1, T2)) (T1, T2, error)`: Recovers `Throwable` panics from a two-value function.
 - `Handle3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (T1, T2, T3, error)`: Recovers `Throwable` panics from a three-value function.
+- `ParseError(err error) Throwable`: Converts any error into a `Throwable`, preserving existing `Throwable` values.
+- `IsMust(err error) bool`: Returns true when the returned error was thrown through `Must`.
 - `Must[T any](v T, err error) T`: Throws if `err` is not nil, otherwise returns `v`.
   It escalates failure through structured propagation, not "program invalid" semantics.
 - `Must0(err error)`: Throws if `err` is not nil for functions that return only error.

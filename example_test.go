@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"relax"
+	"github.com/luckyman42/relax"
 )
 
 // ExampleMust demonstrates basic Must usage for reducing boilerplate.
