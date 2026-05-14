@@ -1,4 +1,4 @@
-module relax
+module github.com/luckyman42/relax
 
 go 1.21
 
