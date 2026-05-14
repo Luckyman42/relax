@@ -1,7 +1,6 @@
 # Relax
 
-**Relax**, don't *Panic*.
-`Throw` failures upward — even if they `Must` — then `Handle` them at the boundary.
+> Don't **Panic**, just **Relax**!
 
 Relax is a small Go toolkit for structured, typed panic-based propagation inside trusted internal paths.
 It is designed to reduce boilerplate where many layers only forward errors without handling them.
@@ -12,13 +11,13 @@ Relax is not a replacement for Go's error handling.
 It is a companion for internal call chains where explicit forwarding becomes noisy, but the error should still be handled at a boundary.
 
 The library provides:
-- a typed propagation wrapper: `Throwable`
-- `Throw(...)` for intentional propagation
-- `Handle(...)` boundaries that recover only `Throwable`
-- helper forms like `Must`, `Must0`, `Must2`, and `Must3`
+- a typed propagation wrapper: `Failer`
+- `FailWith(...)` for intentional propagation
+- `Guard(...)` boundaries that recover only `Failer`
+- helper forms like `FailCheck`, `FailCheck0`, `FailCheck2`, and `FailCheck3`
 
 That means:
-- `Must` escalates failure through structured propagation, not "program invalid" semantics.
+- `FailCheck` escalates failure through structured propagation, not "program invalid" semantics.
 - only errors intentionally thrown through Relax are recovered
 - runtime panics and programmer errors still behave like normal panics
 - metadata can be attached without changing function signatures
@@ -59,10 +58,10 @@ This creates what can reasonably be described as:
 
 Relax lets you keep the propagation path cleaner while still preserving explicit recovery at the edges.
 
-One important benefit is visibility: if a thrown error is not recovered, it will surface as a `Throwable` panic instead of silently disappearing as an ignored error return.
+One important benefit is visibility: if a thrown error is not recovered, it will surface as a `Failer` panic instead of silently disappearing as an ignored error return.
 That makes it easier to catch forgotten handling paths during runtime, rather than letting a dropped `error` value hide a bug.
 
-In other words, an unhandled `Throwable` is noisier than an ignored error return, which helps force the developer to treat failures explicitly.
+In other words, an unhandled `Failer` is noisier than an ignored error return, which helps force the developer to treat failures explicitly.
 
 Traditional explicit error handling allows developers to accidentally ignore errors:
 
@@ -119,12 +118,12 @@ go get github.com/luckyman42/relax
 import "relax"
 
 func Service() string {
-    data := relax.Must(fetchData())
-    return relax.Must(processData(data))
+    data := relax.FailCheck(fetchData())
+    return relax.FailCheck(processData(data))
 }
 
-func Handler() {
-    result, err := relax.Handle(Service)
+func Main() {
+    result, err := relax.Guard(Service)
     if err != nil {
         log.Printf("request failed: %s", err)
         return
@@ -133,35 +132,36 @@ func Handler() {
 }
 ```
 
-## Throwing with metadata
+## FailWithing with metadata
 
-`Throw` accepts optional key/value pairs that are stored in `Throwable.Context`.
+`FailWith` accepts optional key/value pairs that are stored in `Failer.Context`.
 This is useful when you want to attach extra information without changing many function signatures.
 
 ```go
 func validateInput(input string) {
     if input == "" {
-        relax.Throw(errors.New("input required"), "field", "username", "retry", 1)
+        relax.FailWith(errors.New("input required"), "field", "username", "retry", 1)
     }
 }
 ```
 
-## Inspecting Must-originated failures
+## Inspecting failures
 
-`Must` does not mean "program invalid" in this library.
-It means "escalate the failure through structured propagation." When `Must` throws, it marks the `Throwable` with `must: true` so a boundary can detect the propagation style.
+`FailCheck` is a helper that escalates errors through structured propagation.
+When `FailCheck` throws, it panics with a `Failer` just like `FailWith` would.
+At a recovery boundary, you can inspect the error normally:
 
 ```go
-func Handler() {
-    result, err := relax.Handle(func() string {
-        return relax.Must(fetchData())
+func Guard() {
+    result, err := relax.Guard(func() string {
+        return relax.FailCheck(fetchData())
     })
     if err != nil {
-        if relax.IsMust(err) {
-            // this failure was escalated through Must
-            log.Printf("escalated failure: %s", err)
+        var failer relax.Failer
+        if errors.As(err, &failer) {
+            log.Printf("failure with metadata: %s", failer.Err)
+            log.Printf("context: %v", failer.Context)
         }
-        // handle or rethrow
         return
     }
     fmt.Println(result)
@@ -170,27 +170,24 @@ func Handler() {
 
 ## API
 
-- `Throw(err error, keyVals ...any)`: Panics with a `Throwable` wrapping the error and optional context.
-- `Handle[T any](fn func() T) (T, error)`: Executes `fn` and recovers only `Throwable` panics.
-- `Handle0(fn func()) error`: Executes a function with no return values and recovers `Throwable` panics.
-- `Handle2[T1 any, T2 any](fn func() (T1, T2)) (T1, T2, error)`: Recovers `Throwable` panics from a two-value function.
-- `Handle3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (T1, T2, T3, error)`: Recovers `Throwable` panics from a three-value function.
-- `ParseError(err error) Throwable`: Converts any error into a `Throwable`, preserving existing `Throwable` values.
-- `Throwable.Throw(keyVals ...any)`: Panics with the `Throwable`, optionally merging extra context.
-- `IsMust(err error) bool`: Returns true when the returned error was thrown through `Must`.
-- `Must[T any](v T, err error) T`: Throws if `err` is not nil, otherwise returns `v`.
+- `FailWith(err error, keyVals ...any)`: Panics with a `Failer` wrapping the error and optional context.
+- `Guard[T any](fn func() T) (T, error)`: Executes `fn` and recovers only `Failer` panics.
+- `Guard0(fn func()) error`: Executes a function with no return values and recovers `Failer` panics.
+- `Guard2[T1 any, T2 any](fn func() (T1, T2)) (T1, T2, error)`: Recovers `Failer` panics from a two-value function.
+- `Guard3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (T1, T2, T3, error)`: Recovers `Failer` panics from a three-value function.
+- `ConvertToFailer(err error) Failer`: Converts any error into a `Failer`, preserving existing `Failer` values.
+- `Failer.Fail(keyVals ...any)`: Panics with the `Failer`, optionally merging extra context.
+- `FailCheck[T any](v T, err error, keyVals ...any) T`: Fails if `err` is not nil, otherwise returns `v`.
   It escalates failure through structured propagation, not "program invalid" semantics.
-- `Must0(err error)`: Throws if `err` is not nil for functions that return only error.
-- `Must2[T1 any, T2 any](v1 T1, v2 T2, err error) (T1, T2)`: Throws if `err` is not nil and returns two values.
-- `Must3[T1 any, T2 any, T3 any](v1 T1, v2 T2, v3 T3, err error) (T1, T2, T3)`: Throws if `err` is not nil and returns three values.
-- `Throwable`: Implements `error`, preserves stack traces, timestamp, and optional context.
-
-- `Must` adds `must: true` metadata to the thrown `Throwable`, so the recovery site can tell if the error escalated through `Must` rather than being thrown directly.
+- `FailCheck0(err error, keyVals ...any)`: Fails if `err` is not nil for functions that return only error.
+- `FailCheck2[T1 any, T2 any](v1 T1, v2 T2, err error, keyVals ...any) (T1, T2)`: Fails if `err` is not nil and returns two values.
+- `FailCheck3[T1 any, T2 any, T3 any](v1 T1, v2 T2, v3 T3, err error, keyVals ...any) (T1, T2, T3)`: Fails if `err` is not nil and returns three values.
+- `Failer`: Implements `error`, preserves stack traces, timestamp, and optional context.
 
 ## Safety
 
-- Only `Throwable` panics are caught; runtime panics are re-panicked.
-- Use `Handle` at well-defined boundaries, not inside every helper.
+- Only `Failer` panics are caught; runtime panics are re-panicked.
+- Use `Guard` at well-defined boundaries, not inside every helper.
 - Keep cleanup explicit with `defer`.
 
 ## Trade-offs

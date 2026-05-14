@@ -8,47 +8,47 @@ import (
 	"github.com/luckyman42/relax"
 )
 
-// ExampleMust demonstrates basic Must usage for reducing boilerplate.
-func ExampleMust() {
+// ExampleFailCheck demonstrates basic FailCheck usage for reducing boilerplate.
+func ExampleFailCheck() {
 	// Instead of:
 	// v, err := someFunc()
 	// if err != nil { return err }
 	// Use:
-	v := relax.Must(someFunc())
+	v := relax.FailCheck(someFunc())
 	fmt.Println(v)
 	// Output: success
 }
 
-// ExampleThrow demonstrates throwing an error with context.
-func ExampleThrow() {
+// ExampleFailWith demonstrates throwing an error with context.
+func ExampleFailWith() {
 	defer func() {
 		if r := recover(); r != nil {
-			if throwable, ok := r.(relax.Throwable); ok {
+			if throwable, ok := r.(relax.Failer); ok {
 				log.Printf("Caught: %s\nStack: %s\nUser: %v", throwable.Err, throwable.Stack, throwable.Context["user"])
 			}
 		}
 	}()
-	relax.Throw(errors.New("example error"), "user", "alice", "route", "/login")
+	relax.FailWith(errors.New("example error"), "user", "alice", "route", "/login")
 	// This will panic and be caught by the defer
 }
 
-// ExampleMust0 demonstrates Must0 usage for error-only functions.
-func ExampleMust0() {
-	relax.Must0(doSomething())
+// ExampleFailCheck0 demonstrates FailCheck0 usage for error-only functions.
+func ExampleFailCheck0() {
+	relax.FailCheck0(doSomething())
 	fmt.Println("done")
 	// Output: done
 }
 
-// ExampleHandle demonstrates safe recovery.
-func ExampleHandle() {
-	result, err := relax.Handle(func() string {
-		// Simulate a call chain with Must
-		data := relax.Must(parseData("input"))
-		return relax.Must(processData(data))
+// ExampleGuard demonstrates safe recovery.
+func ExampleGuard() {
+	result, err := relax.Guard(func() string {
+		// Simulate a call chain with FailCheck
+		data := relax.FailCheck(parseData("input"))
+		return relax.FailCheck(processData(data))
 	})
 
 	if err != nil {
-		log.Printf("Handled error: %s", err)
+		log.Printf("Guardd error: %s", err)
 	} else {
 		fmt.Println(result)
 	}

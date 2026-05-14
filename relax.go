@@ -7,35 +7,35 @@ import (
 	"time"
 )
 
-// Throwable represents a structured error that can be thrown and caught.
+// Failer represents a structured error that can be thrown and caught.
 // It implements the error interface and preserves stack traces and metadata.
-type Throwable struct {
+type Failer struct {
 	Err       error
 	Stack     []byte
 	Timestamp time.Time
 	Context   map[string]any
 }
 
-// Error returns the underlying error message for this Throwable.
-func (t Throwable) Error() string {
-	if t.Err != nil {
-		return t.Err.Error()
+// Error returns the underlying error message for this Failer.
+func (f Failer) Error() string {
+	if f.Err != nil {
+		return f.Err.Error()
 	}
 	return ""
 }
 
 // Unwrap returns the underlying error for compatibility with errors.As and errors.Is.
-func (t Throwable) Unwrap() error {
-	return t.Err
+func (f Failer) Unwrap() error {
+	return f.Err
 }
 
-// Throw panics with this Throwable.
-// If extra key/value pairs are provided, they are merged into the Throwable context.
-// This avoids wrapping a Throwable inside another Throwable when rethrowing.
-func (t Throwable) Throw(keyVals ...any) {
+// Fail panics with this Failer.
+// If extra key/value pairs are provided, they are merged into the Failer context.
+// This avoids wrapping a Failer inside another Failer when rethrowing.
+func (f Failer) Fail(keyVals ...any) {
 	if len(keyVals) > 0 {
-		if t.Context == nil {
-			t.Context = make(map[string]any)
+		if f.Context == nil {
+			f.Context = make(map[string]any)
 		}
 		for i := 0; i < len(keyVals); i += 2 {
 			key := fmt.Sprint(keyVals[i])
@@ -43,21 +43,21 @@ func (t Throwable) Throw(keyVals ...any) {
 			if i+1 < len(keyVals) {
 				value = keyVals[i+1]
 			}
-			t.Context[key] = value
+			f.Context[key] = value
 		}
 	}
-	panic(t)
+	panic(f)
 }
 
-func newThrowable(err error, keyVals ...any) Throwable {
-	throwable := Throwable{
+func newFailer(err error, keyVals ...any) Failer {
+	failer := Failer{
 		Err:       err,
 		Stack:     debug.Stack(),
 		Timestamp: time.Now(),
 	}
 
 	if len(keyVals) == 0 {
-		return throwable
+		return failer
 	}
 
 	context := make(map[string]any, (len(keyVals)+1)/2)
@@ -69,173 +69,158 @@ func newThrowable(err error, keyVals ...any) Throwable {
 		}
 		context[key] = value
 	}
-	throwable.Context = context
-	return throwable
+	failer.Context = context
+	return failer
 }
 
-// Throw panics with a Throwable wrapping the given error.
-// If err is already a Throwable, it is re-panicked directly.
-// If extra key/value pairs are provided, they are merged into the Throwable context.
+// FailWith panics with a Failer wrapping the given error.
+// If err is already a Failer, it is re-panicked directly.
+// If extra key/value pairs are provided, they are merged into the Failer context.
 // If err is nil, it does nothing.
-func Throw(err error, keyVals ...any) {
+func FailWith(err error, keyVals ...any) {
 	if err == nil {
 		return
 	}
 
-	switch t := err.(type) {
-	case Throwable:
-		t.Throw(keyVals...)
-	case *Throwable:
-		if t == nil {
+	switch f := err.(type) {
+	case Failer:
+		f.Fail(keyVals...)
+	case *Failer:
+		if f == nil {
 			return
 		}
-		(*t).Throw(keyVals...)
+		(*f).Fail(keyVals...)
 	default:
-		panic(newThrowable(err, keyVals...))
+		panic(newFailer(err, keyVals...))
 	}
 }
 
-// ParseError converts any error into a Throwable.
-// If err is already a Throwable, it is returned unchanged.
-// Otherwise the error is wrapped into a new Throwable.
-func ParseError(err error) Throwable {
+// ConvertToFailer converts any error into a Failer.
+// If err is already a Failer, it is returned unchanged.
+// Otherwise the error is wrapped into a new Failer.
+func ConvertToFailer(err error) Failer {
 	if err == nil {
-		return Throwable{}
+		return Failer{}
 	}
 
-	var throwable Throwable
-	if errors.As(err, &throwable) {
-		return throwable
+	var failer Failer
+	if errors.As(err, &failer) {
+		return failer
 	}
 
-	return newThrowable(err)
+	return newFailer(err)
 }
 
-// IsMust reports whether err is a Throwable propagated through Must.
-// It returns true for Must-originated Throwables, even after rethrowing.
-func IsMust(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	var throwable Throwable
-	if !errors.As(err, &throwable) {
-		return false
-	}
-
-	return throwable.Context != nil && throwable.Context["must"] == true
-}
-
-// Handle executes the given function and recovers only Throwable panics,
+// Guard executes the given function and recovers only Failer panics,
 // converting them back to errors. Other panics are re-panicked.
 // This provides a safe recovery boundary.
-func Handle[T any](fn func() T) (result T, err error) {
+func Guard[T any](fn func() T) (result T, err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
 			return
 		}
 
-		throwable, ok := r.(Throwable)
+		failer, ok := r.(Failer)
 		if !ok {
 			panic(r)
 		}
 
-		err = throwable
+		err = failer
 	}()
 
 	result = fn()
 	return
 }
 
-// Handle0 recovers from Throwable panics in a function that returns no values.
-func Handle0(fn func()) (err error) {
+// Guard0 recovers from Failer panics in a function that returns no values.
+func Guard0(fn func()) (err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
 			return
 		}
 
-		throwable, ok := r.(Throwable)
+		failer, ok := r.(Failer)
 		if !ok {
 			panic(r)
 		}
 
-		err = throwable
+		err = failer
 	}()
 
 	fn()
 	return
 }
 
-// Handle2 recovers from Throwable panics in a function that returns two values.
-func Handle2[T1 any, T2 any](fn func() (T1, T2)) (result1 T1, result2 T2, err error) {
+// Guard2 recovers from Failer panics in a function that returns two values.
+func Guard2[T1 any, T2 any](fn func() (T1, T2)) (result1 T1, result2 T2, err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
 			return
 		}
 
-		throwable, ok := r.(Throwable)
+		failer, ok := r.(Failer)
 		if !ok {
 			panic(r)
 		}
 
-		err = throwable
+		err = failer
 	}()
 
 	result1, result2 = fn()
 	return
 }
 
-// Handle3 recovers from Throwable panics in a function that returns three values.
-func Handle3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (result1 T1, result2 T2, result3 T3, err error) {
+// Guard3 recovers from Failer panics in a function that returns three values.
+func Guard3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (result1 T1, result2 T2, result3 T3, err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
 			return
 		}
 
-		throwable, ok := r.(Throwable)
+		failer, ok := r.(Failer)
 		if !ok {
 			panic(r)
 		}
 
-		err = throwable
+		err = failer
 	}()
 
 	result1, result2, result3 = fn()
 	return
 }
 
-// Must checks if err is not nil and throws it if so.
+// FailCheck checks if err is not nil and fails with it if so.
 // Otherwise, returns v. This reduces boilerplate in error propagation.
-func Must[T any](v T, err error) T {
+func FailCheck[T any](v T, err error, keyVals ...any) T {
 	if err != nil {
-		Throw(err, "must", true)
+		FailWith(err, keyVals...)
 	}
 	return v
 }
 
-// Must0 throws if err is not nil and otherwise returns nothing.
-func Must0(err error) {
+// FailCheck0 fails if err is not nil and otherwise returns nothing.
+func FailCheck0(err error, keyVals ...any) {
 	if err != nil {
-		Throw(err, "must", true)
+		FailWith(err, keyVals...)
 	}
 }
 
-// Must2 throws if err is not nil and otherwise returns two values.
-func Must2[T1 any, T2 any](v1 T1, v2 T2, err error) (T1, T2) {
+// FailCheck2 fails if err is not nil and otherwise returns two values.
+func FailCheck2[T1 any, T2 any](v1 T1, v2 T2, err error, keyVals ...any) (T1, T2) {
 	if err != nil {
-		Throw(err, "must", true)
+		FailWith(err, keyVals...)
 	}
 	return v1, v2
 }
 
-// Must3 throws if err is not nil and otherwise returns three values.
-func Must3[T1 any, T2 any, T3 any](v1 T1, v2 T2, v3 T3, err error) (T1, T2, T3) {
+// FailCheck3 fails if err is not nil and otherwise returns three values.
+func FailCheck3[T1 any, T2 any, T3 any](v1 T1, v2 T2, v3 T3, err error, keyVals ...any) (T1, T2, T3) {
 	if err != nil {
-		Throw(err, "must", true)
+		FailWith(err, keyVals...)
 	}
 	return v1, v2, v3
 }
