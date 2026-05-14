@@ -100,6 +100,53 @@ func TestThrow_ExistingThrowableMergesContext(t *testing.T) {
 	Throw(orig, "a", 3, "b", "two")
 }
 
+func TestThrowable_ThrowMethodMergesContext(t *testing.T) {
+	orig := Throwable{Err: errors.New("existing throwable"), Context: map[string]any{"a": 1}}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Expected panic, but none occurred")
+		}
+		throwable, ok := r.(Throwable)
+		if !ok {
+			t.Fatalf("Expected Throwable, got %T", r)
+		}
+		if throwable.Context["a"] != 3 {
+			t.Errorf("Expected context a=3, got %v", throwable.Context["a"])
+		}
+		if throwable.Context["b"] != "two" {
+			t.Errorf("Expected context b='two', got %v", throwable.Context["b"])
+		}
+	}()
+
+	orig.Throw("a", 3, "b", "two")
+}
+
+func TestHandle_CatchAndRethrowPreservesIsMust(t *testing.T) {
+	_, err := Handle(func() string {
+		_, innerErr := Handle(func() string {
+			return Must("ok", errors.New("must fail"))
+		})
+		if innerErr != nil {
+			Throw(innerErr)
+		}
+		return ""
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got nil")
+	}
+	if !IsMust(err) {
+		t.Error("Expected IsMust to return true after rethrowing a Must-originated Throwable")
+	}
+	var throwable Throwable
+	if !errors.As(err, &throwable) {
+		t.Fatalf("Expected Throwable, got %T", err)
+	}
+	if errors.As(throwable.Err, &Throwable{}) {
+		t.Error("Expected underlying Err not to be a nested Throwable")
+	}
+}
+
 func TestHandle_Success(t *testing.T) {
 	result, err := Handle(func() int {
 		return 42

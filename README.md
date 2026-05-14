@@ -124,9 +124,7 @@ func Service() string {
 }
 
 func Handler() {
-    result, err := relax.Handle(func() string {
-        return Service()
-    })
+    result, err := relax.Handle(Service)
     if err != nil {
         log.Printf("request failed: %s", err)
         return
@@ -178,6 +176,7 @@ func Handler() {
 - `Handle2[T1 any, T2 any](fn func() (T1, T2)) (T1, T2, error)`: Recovers `Throwable` panics from a two-value function.
 - `Handle3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (T1, T2, T3, error)`: Recovers `Throwable` panics from a three-value function.
 - `ParseError(err error) Throwable`: Converts any error into a `Throwable`, preserving existing `Throwable` values.
+- `Throwable.Throw(keyVals ...any)`: Panics with the `Throwable`, optionally merging extra context.
 - `IsMust(err error) bool`: Returns true when the returned error was thrown through `Must`.
 - `Must[T any](v T, err error) T`: Throws if `err` is not nil, otherwise returns `v`.
   It escalates failure through structured propagation, not "program invalid" semantics.

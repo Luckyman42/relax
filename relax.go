@@ -16,7 +16,7 @@ type Throwable struct {
 	Context   map[string]any
 }
 
-// Error implements the error interface.
+// Error returns the underlying error message for this Throwable.
 func (t Throwable) Error() string {
 	if t.Err != nil {
 		return t.Err.Error()
@@ -27,6 +27,26 @@ func (t Throwable) Error() string {
 // Unwrap returns the underlying error for compatibility with errors.As and errors.Is.
 func (t Throwable) Unwrap() error {
 	return t.Err
+}
+
+// Throw panics with this Throwable.
+// If extra key/value pairs are provided, they are merged into the Throwable context.
+// This avoids wrapping a Throwable inside another Throwable when rethrowing.
+func (t Throwable) Throw(keyVals ...any) {
+	if len(keyVals) > 0 {
+		if t.Context == nil {
+			t.Context = make(map[string]any)
+		}
+		for i := 0; i < len(keyVals); i += 2 {
+			key := fmt.Sprint(keyVals[i])
+			var value any
+			if i+1 < len(keyVals) {
+				value = keyVals[i+1]
+			}
+			t.Context[key] = value
+		}
+	}
+	panic(t)
 }
 
 func newThrowable(err error, keyVals ...any) Throwable {
@@ -64,41 +84,12 @@ func Throw(err error, keyVals ...any) {
 
 	switch t := err.(type) {
 	case Throwable:
-		if len(keyVals) == 0 {
-			panic(t)
-		}
-		if t.Context == nil {
-			t.Context = make(map[string]any)
-		}
-		for i := 0; i < len(keyVals); i += 2 {
-			key := fmt.Sprint(keyVals[i])
-			var value any
-			if i+1 < len(keyVals) {
-				value = keyVals[i+1]
-			}
-			t.Context[key] = value
-		}
-		panic(t)
+		t.Throw(keyVals...)
 	case *Throwable:
 		if t == nil {
 			return
 		}
-		copy := *t
-		if len(keyVals) == 0 {
-			panic(copy)
-		}
-		if copy.Context == nil {
-			copy.Context = make(map[string]any)
-		}
-		for i := 0; i < len(keyVals); i += 2 {
-			key := fmt.Sprint(keyVals[i])
-			var value any
-			if i+1 < len(keyVals) {
-				value = keyVals[i+1]
-			}
-			copy.Context[key] = value
-		}
-		panic(copy)
+		(*t).Throw(keyVals...)
 	default:
 		panic(newThrowable(err, keyVals...))
 	}
@@ -121,6 +112,7 @@ func ParseError(err error) Throwable {
 }
 
 // IsMust reports whether err is a Throwable propagated through Must.
+// It returns true for Must-originated Throwables, even after rethrowing.
 func IsMust(err error) bool {
 	if err == nil {
 		return false
