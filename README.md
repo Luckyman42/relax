@@ -7,7 +7,7 @@ It is designed to reduce boilerplate where many layers only forward errors witho
 
 ## What Relax is
 
-Relax is not a replacement for Go's error handling.
+Relax is not a replacement for Go's explicit error handling.
 It is a companion for internal call chains where explicit forwarding becomes noisy, but the error should still be handled at a boundary.
 
 The library provides:
@@ -132,9 +132,9 @@ func Main() {
 }
 ```
 
-## FailWithing with metadata
+## Fail with metadata
 
-`FailWith` accepts optional key/value pairs that are stored in `Failer.Context`.
+`FailWith` and `FailCheck` accepts optional key/value pairs that are stored in `Failer.Context`.
 This is useful when you want to attach extra information without changing many function signatures.
 
 ```go
@@ -142,6 +142,12 @@ func validateInput(input string) {
     if input == "" {
         relax.FailWith(errors.New("input required"), "field", "username", "retry", 1)
     }
+}
+
+func validateInputCheck(input string) {
+    relax.FailCheck(func(){validate(string)},
+                    "field", "username",
+                    "retry", 1)
 }
 ```
 
@@ -176,18 +182,25 @@ func Guard() {
 - `Guard2[T1 any, T2 any](fn func() (T1, T2)) (T1, T2, error)`: Recovers `Failer` panics from a two-value function.
 - `Guard3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (T1, T2, T3, error)`: Recovers `Failer` panics from a three-value function.
 - `ConvertToFailer(err error) Failer`: Converts any error into a `Failer`, preserving existing `Failer` values.
+- `IsFailer(err error) bool`: Reports whether `err` is a `Failer` or wraps a `Failer`.
 - `Failer.Fail(keyVals ...any)`: Panics with the `Failer`, optionally merging extra context.
 - `FailCheck[T any](v T, err error, keyVals ...any) T`: Fails if `err` is not nil, otherwise returns `v`.
   It escalates failure through structured propagation, not "program invalid" semantics.
 - `FailCheck0(err error, keyVals ...any)`: Fails if `err` is not nil for functions that return only error.
 - `FailCheck2[T1 any, T2 any](v1 T1, v2 T2, err error, keyVals ...any) (T1, T2)`: Fails if `err` is not nil and returns two values.
 - `FailCheck3[T1 any, T2 any, T3 any](v1 T1, v2 T2, v3 T3, err error, keyVals ...any) (T1, T2, T3)`: Fails if `err` is not nil and returns three values.
+- `GuardErr[T any](fn func() (T, error)) (T, error)`: Executes `fn`, recovers `Failer` panics, and returns the original `error` or the recovered `Failer`.
+- `GuardErr0(fn func() error) error`: Recovers `Failer` panics from functions returning only `error`.
+- `GuardErr2[T1 any, T2 any](fn func() (T1, T2, error)) (T1, T2, error)`: Recovers `Failer` panics from two-value functions with error.
+- `GuardErr3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3, error)) (T1, T2, T3, error)`: Recovers `Failer` panics from three-value functions with error.
 - `Failer`: Implements `error`, preserves stack traces, timestamp, and optional context.
 
 ## Safety
 
 - Only `Failer` panics are caught; runtime panics are re-panicked.
 - Use `Guard` at well-defined boundaries, not inside every helper.
+- Prefer not to return `Failer` values directly from normal function returns.
+  If a function needs to preserve `Failer` semantics, return `fail.Err` or `fail.Unwrap()` instead.
 - Keep cleanup explicit with `defer`.
 
 ## Trade-offs

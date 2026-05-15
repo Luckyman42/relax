@@ -192,6 +192,68 @@ func TestGuard_OtherPanic(t *testing.T) {
 	})
 }
 
+func TestIsFailer(t *testing.T) {
+	existing := Failer{Err: errors.New("test")}
+	if !IsFailer(existing) {
+		t.Error("Expected IsFailer to return true for Failer value")
+	}
+	if !IsFailer(&existing) {
+		t.Error("Expected IsFailer to return true for Failer pointer")
+	}
+	if IsFailer(errors.New("plain error")) {
+		t.Error("Expected IsFailer to return false for plain error")
+	}
+}
+
+func TestGuardErr_Success(t *testing.T) {
+	result, err := GuardErr(func() (int, error) {
+		return 42, nil
+	})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if result != 42 {
+		t.Errorf("Expected 42, got %d", result)
+	}
+}
+
+func TestGuardErr_Failer(t *testing.T) {
+	result, err := GuardErr(func() (int, error) {
+		FailWith(errors.New("thrown error"))
+		return 0, nil
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got nil")
+	}
+	var failer Failer
+	if !errors.As(err, &failer) {
+		t.Fatalf("Expected Failer, got %T", err)
+	}
+	if failer.Err.Error() != "thrown error" {
+		t.Errorf("Expected 'thrown error', got '%s'", failer.Err.Error())
+	}
+	if result != 0 {
+		t.Errorf("Expected 0, got %d", result)
+	}
+}
+
+func TestGuardErr2_Failer(t *testing.T) {
+	_, _, err := GuardErr2(func() (int, string, error) {
+		FailWith(errors.New("unwind2 error"))
+		return 0, "", nil
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got none")
+	}
+	var failer Failer
+	if !errors.As(err, &failer) {
+		t.Fatalf("Expected Failer, got %T", err)
+	}
+	if failer.Err.Error() != "unwind2 error" {
+		t.Errorf("Expected 'unwind2 error', got '%s'", failer.Err.Error())
+	}
+}
+
 func TestFailCheck_Success(t *testing.T) {
 	result := FailCheck(42, nil)
 	if result != 42 {

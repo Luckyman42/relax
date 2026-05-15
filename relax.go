@@ -73,6 +73,32 @@ func newFailer(err error, keyVals ...any) Failer {
 	return failer
 }
 
+func recoverFailer(r any) (Failer, bool) {
+	switch f := r.(type) {
+	case Failer:
+		return f, true
+	case *Failer:
+		if f == nil {
+			return Failer{}, false
+		}
+		return *f, true
+	default:
+		return Failer{}, false
+	}
+}
+
+func recoverInto(err *error) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	failer, ok := recoverFailer(r)
+	if !ok {
+		panic(r)
+	}
+	*err = failer
+}
+
 // FailWith panics with a Failer wrapping the given error.
 // If err is already a Failer, it is re-panicked directly.
 // If extra key/value pairs are provided, they are merged into the Failer context.
@@ -103,6 +129,24 @@ func ConvertToFailer(err error) Failer {
 		return Failer{}
 	}
 
+	switch f := err.(type) {
+	case Failer:
+		return f
+	case *Failer:
+		if f == nil {
+			return Failer{}
+		}
+		return *f
+	}
+
+	var pointerFailer *Failer
+	if errors.As(err, &pointerFailer) {
+		if pointerFailer == nil {
+			return Failer{}
+		}
+		return *pointerFailer
+	}
+
 	var failer Failer
 	if errors.As(err, &failer) {
 		return failer
@@ -111,23 +155,26 @@ func ConvertToFailer(err error) Failer {
 	return newFailer(err)
 }
 
+// IsFailer reports whether err is a Failer or wraps a Failer.
+func IsFailer(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pointerFailer *Failer
+	if errors.As(err, &pointerFailer) {
+		return pointerFailer != nil
+	}
+
+	var failer Failer
+	return errors.As(err, &failer)
+}
+
 // Guard executes the given function and recovers only Failer panics,
 // converting them back to errors. Other panics are re-panicked.
 // This provides a safe recovery boundary.
 func Guard[T any](fn func() T) (result T, err error) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			return
-		}
-
-		failer, ok := r.(Failer)
-		if !ok {
-			panic(r)
-		}
-
-		err = failer
-	}()
+	defer recoverInto(&err)
 
 	result = fn()
 	return
@@ -135,19 +182,7 @@ func Guard[T any](fn func() T) (result T, err error) {
 
 // Guard0 recovers from Failer panics in a function that returns no values.
 func Guard0(fn func()) (err error) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			return
-		}
-
-		failer, ok := r.(Failer)
-		if !ok {
-			panic(r)
-		}
-
-		err = failer
-	}()
+	defer recoverInto(&err)
 
 	fn()
 	return
@@ -155,19 +190,7 @@ func Guard0(fn func()) (err error) {
 
 // Guard2 recovers from Failer panics in a function that returns two values.
 func Guard2[T1 any, T2 any](fn func() (T1, T2)) (result1 T1, result2 T2, err error) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			return
-		}
-
-		failer, ok := r.(Failer)
-		if !ok {
-			panic(r)
-		}
-
-		err = failer
-	}()
+	defer recoverInto(&err)
 
 	result1, result2 = fn()
 	return
@@ -175,21 +198,42 @@ func Guard2[T1 any, T2 any](fn func() (T1, T2)) (result1 T1, result2 T2, err err
 
 // Guard3 recovers from Failer panics in a function that returns three values.
 func Guard3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3)) (result1 T1, result2 T2, result3 T3, err error) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			return
-		}
-
-		failer, ok := r.(Failer)
-		if !ok {
-			panic(r)
-		}
-
-		err = failer
-	}()
+	defer recoverInto(&err)
 
 	result1, result2, result3 = fn()
+	return
+}
+
+// GuardErr recovers from Failer panics in a function that returns (T, error).
+// It preserves the normal returned error or returns a Failer if one was thrown.
+func GuardErr[T any](fn func() (T, error)) (result T, err error) {
+	defer recoverInto(&err)
+
+	result, err = fn()
+	return
+}
+
+// GuardErr0 recovers from Failer panics in a function that returns an error.
+func GuardErr0(fn func() error) (err error) {
+	defer recoverInto(&err)
+
+	err = fn()
+	return
+}
+
+// GuardErr2 recovers from Failer panics in a function that returns (T1, T2, error).
+func GuardErr2[T1 any, T2 any](fn func() (T1, T2, error)) (result1 T1, result2 T2, err error) {
+	defer recoverInto(&err)
+
+	result1, result2, err = fn()
+	return
+}
+
+// GuardErr3 recovers from Failer panics in a function that returns (T1, T2, T3, error).
+func GuardErr3[T1 any, T2 any, T3 any](fn func() (T1, T2, T3, error)) (result1 T1, result2 T2, result3 T3, err error) {
+	defer recoverInto(&err)
+
+	result1, result2, result3, err = fn()
 	return
 }
 
