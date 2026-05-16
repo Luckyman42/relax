@@ -12,19 +12,38 @@ func TestFailWith(t *testing.T) {
 		if r == nil {
 			t.Fatal("Expected panic, but none occurred")
 		}
-		throwable, ok := r.(Failer)
+		failer, ok := r.(Failer)
 		if !ok {
 			t.Fatalf("Expected Failer, got %T", r)
 		}
-		if throwable.Err.Error() != "test error" {
-			t.Errorf("Expected 'test error', got '%s'", throwable.Err.Error())
+		if failer.Err.Error() != "test error" {
+			t.Errorf("Expected 'test error', got '%s'", failer.Err.Error())
 		}
-		if len(throwable.Stack) == 0 {
+		if len(failer.Stack) == 0 {
 			t.Error("Expected stack trace, but it was empty")
 		}
 	}()
 
 	FailWith(errors.New("test error"))
+}
+func TestFailWith_Pointer(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Expected panic, but none occurred")
+		}
+		failer, ok := r.(Failer)
+		if !ok {
+			t.Fatalf("Expected Failer, got %T", r)
+		}
+		if failer.Err.Error() != "test error" {
+			t.Errorf("Expected 'test error', got '%s'", failer.Err.Error())
+		}
+		if len(failer.Stack) == 1 {
+			t.Error("Expected stack trace, but it was empty")
+		}
+	}()
+	FailWith(&Failer{Err: errors.New("test error")})
 }
 
 func TestFailWith_Context(t *testing.T) {
@@ -33,20 +52,20 @@ func TestFailWith_Context(t *testing.T) {
 		if r == nil {
 			t.Fatal("Expected panic, but none occurred")
 		}
-		throwable, ok := r.(Failer)
+		failer, ok := r.(Failer)
 		if !ok {
 			t.Fatalf("Expected Failer, got %T", r)
 		}
-		if throwable.Err.Error() != "context error" {
-			t.Errorf("Expected 'context error', got '%s'", throwable.Err.Error())
+		if failer.Err.Error() != "context error" {
+			t.Errorf("Expected 'context error', got '%s'", failer.Err.Error())
 		}
-		if throwable.Context["user"] != "alice" {
-			t.Errorf("Expected context user='alice', got %v", throwable.Context["user"])
+		if failer.Context["user"] != "alice" {
+			t.Errorf("Expected context user='alice', got %v", failer.Context["user"])
 		}
-		if throwable.Context["attempt"] != 3 {
-			t.Errorf("Expected context attempt=3, got %v", throwable.Context["attempt"])
+		if failer.Context["attempt"] != 3 {
+			t.Errorf("Expected context attempt=3, got %v", failer.Context["attempt"])
 		}
-		if throwable.Timestamp.IsZero() {
+		if failer.Timestamp.IsZero() {
 			t.Error("Expected Timestamp to be set")
 		}
 	}()
@@ -55,21 +74,21 @@ func TestFailWith_Context(t *testing.T) {
 }
 
 func TestFailWith_ExistingFailerRepanicsPlainly(t *testing.T) {
-	orig := Failer{Err: errors.New("existing throwable"), Context: map[string]any{"a": 1}}
+	orig := Failer{Err: errors.New("existing failer"), Context: map[string]any{"a": 1}}
 	defer func() {
 		r := recover()
 		if r == nil {
 			t.Fatal("Expected panic, but none occurred")
 		}
-		throwable, ok := r.(Failer)
+		failer, ok := r.(Failer)
 		if !ok {
 			t.Fatalf("Expected Failer, got %T", r)
 		}
-		if throwable.Err.Error() != "existing throwable" {
-			t.Errorf("Expected 'existing throwable', got '%s'", throwable.Err.Error())
+		if failer.Err.Error() != "existing failer" {
+			t.Errorf("Expected 'existing failer', got '%s'", failer.Err.Error())
 		}
-		if throwable.Context["a"] != 1 {
-			t.Errorf("Expected context a=1, got %v", throwable.Context["a"])
+		if failer.Context["a"] != 1 {
+			t.Errorf("Expected context a=1, got %v", failer.Context["a"])
 		}
 	}()
 
@@ -77,24 +96,24 @@ func TestFailWith_ExistingFailerRepanicsPlainly(t *testing.T) {
 }
 
 func TestFailWith_ExistingFailerMergesContext(t *testing.T) {
-	orig := Failer{Err: errors.New("existing throwable"), Context: map[string]any{"a": 1}}
+	orig := Failer{Err: errors.New("existing failer"), Context: map[string]any{"a": 1}}
 	defer func() {
 		r := recover()
 		if r == nil {
 			t.Fatal("Expected panic, but none occurred")
 		}
-		throwable, ok := r.(Failer)
+		failer, ok := r.(Failer)
 		if !ok {
 			t.Fatalf("Expected Failer, got %T", r)
 		}
-		if throwable.Err.Error() != "existing throwable" {
-			t.Errorf("Expected 'existing throwable', got '%s'", throwable.Err.Error())
+		if failer.Err.Error() != "existing failer" {
+			t.Errorf("Expected 'existing failer', got '%s'", failer.Err.Error())
 		}
-		if throwable.Context["a"] != 3 {
-			t.Errorf("Expected context a=3, got %v", throwable.Context["a"])
+		if failer.Context["a"] != 3 {
+			t.Errorf("Expected context a=3, got %v", failer.Context["a"])
 		}
-		if throwable.Context["b"] != "two" {
-			t.Errorf("Expected context b='two', got %v", throwable.Context["b"])
+		if failer.Context["b"] != "two" {
+			t.Errorf("Expected context b='two', got %v", failer.Context["b"])
 		}
 	}()
 
@@ -165,12 +184,32 @@ func TestGuard_Failer(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error, but got none")
 	}
-	var throwable Failer
-	if !errors.As(err, &throwable) {
+	var failer Failer
+	if !errors.As(err, &failer) {
 		t.Fatalf("Expected Failer, got %T", err)
 	}
-	if throwable.Err.Error() != "thrown error" {
-		t.Errorf("Expected 'thrown error', got '%s'", throwable.Err.Error())
+	if failer.Err.Error() != "thrown error" {
+		t.Errorf("Expected 'thrown error', got '%s'", failer.Err.Error())
+	}
+	if result != 0 {
+		t.Errorf("Expected 0, got %d", result)
+	}
+}
+
+func TestGuard_FailerPointer(t *testing.T) {
+	result, err := Guard(func() int {
+		FailWith(&Failer{Err: errors.New("thrown error")})
+		return 0
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got none")
+	}
+	var failer Failer
+	if !errors.As(err, &failer) {
+		t.Fatalf("Expected Failer, got %T", err)
+	}
+	if failer.Err.Error() != "thrown error" {
+		t.Errorf("Expected 'thrown error', got '%s'", failer.Err.Error())
 	}
 	if result != 0 {
 		t.Errorf("Expected 0, got %d", result)
@@ -238,6 +277,47 @@ func TestGuardErr_Failer(t *testing.T) {
 	}
 }
 
+func TestGuardErr0_Success(t *testing.T) {
+	err := GuardErr0(func() error {
+		return nil
+	})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestGuardErr0_Failer(t *testing.T) {
+	err := GuardErr0(func() error {
+		FailWith(errors.New("thrown error"))
+		return nil
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got nil")
+	}
+	var failer Failer
+	if !errors.As(err, &failer) {
+		t.Fatalf("Expected Failer, got %T", err)
+	}
+	if failer.Err.Error() != "thrown error" {
+		t.Errorf("Expected 'thrown error', got '%s'", failer.Err.Error())
+	}
+}
+
+func TestGuardErr2_Success(t *testing.T) {
+	result1, result2, err := GuardErr2(func() (int, int, error) {
+		return 42, 23, nil
+	})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if result1 != 42 {
+		t.Errorf("Expected 42, got %d", result1)
+	}
+	if result2 != 23 {
+		t.Errorf("Expected 23, got %d", result2)
+	}
+}
+
 func TestGuardErr2_Failer(t *testing.T) {
 	_, _, err := GuardErr2(func() (int, string, error) {
 		FailWith(errors.New("unwind2 error"))
@@ -252,6 +332,41 @@ func TestGuardErr2_Failer(t *testing.T) {
 	}
 	if failer.Err.Error() != "unwind2 error" {
 		t.Errorf("Expected 'unwind2 error', got '%s'", failer.Err.Error())
+	}
+}
+
+func TestGuardErr3_Success(t *testing.T) {
+	result1, result2, result3, err := GuardErr3(func() (int, int, int, error) {
+		return 42, 23, 18, nil
+	})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+	if result1 != 42 {
+		t.Errorf("Expected 42, got %d", result1)
+	}
+	if result2 != 23 {
+		t.Errorf("Expected 23, got %d", result2)
+	}
+	if result3 != 18 {
+		t.Errorf("Expected 18, got %d", result3)
+	}
+}
+
+func TestGuardErr3_Failer(t *testing.T) {
+	_, _, _, err := GuardErr3(func() (int, int, int, error) {
+		FailWith(errors.New("unwind3 error"))
+		return 0, 0, 0, nil
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got none")
+	}
+	var failer Failer
+	if !errors.As(err, &failer) {
+		t.Fatalf("Expected Failer, got %T", err)
+	}
+	if failer.Err.Error() != "unwind3 error" {
+		t.Errorf("Expected 'unwind3 error', got '%s'", failer.Err.Error())
 	}
 }
 
@@ -350,12 +465,12 @@ func TestGuard0_Failer(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error, but got none")
 	}
-	var throwable Failer
-	if !errors.As(err, &throwable) {
+	var failer Failer
+	if !errors.As(err, &failer) {
 		t.Fatalf("Expected Failer, got %T", err)
 	}
-	if throwable.Err.Error() != "unwind0 error" {
-		t.Errorf("Expected 'unwind0 error', got '%s'", throwable.Err.Error())
+	if failer.Err.Error() != "unwind0 error" {
+		t.Errorf("Expected 'unwind0 error', got '%s'", failer.Err.Error())
 	}
 }
 
@@ -367,12 +482,12 @@ func TestGuard2_Failer(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error, but got none")
 	}
-	var throwable Failer
-	if !errors.As(err, &throwable) {
+	var failer Failer
+	if !errors.As(err, &failer) {
 		t.Fatalf("Expected Failer, got %T", err)
 	}
-	if throwable.Err.Error() != "unwind2 error" {
-		t.Errorf("Expected 'unwind2 error', got '%s'", throwable.Err.Error())
+	if failer.Err.Error() != "unwind2 error" {
+		t.Errorf("Expected 'unwind2 error', got '%s'", failer.Err.Error())
 	}
 }
 
@@ -384,12 +499,12 @@ func TestGuard3_Failer(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error, but got none")
 	}
-	var throwable Failer
-	if !errors.As(err, &throwable) {
+	var failer Failer
+	if !errors.As(err, &failer) {
 		t.Fatalf("Expected Failer, got %T", err)
 	}
-	if throwable.Err.Error() != "unwind3 error" {
-		t.Errorf("Expected 'unwind3 error', got '%s'", throwable.Err.Error())
+	if failer.Err.Error() != "unwind3 error" {
+		t.Errorf("Expected 'unwind3 error', got '%s'", failer.Err.Error())
 	}
 }
 
@@ -413,9 +528,16 @@ func TestFailCheck_Error(t *testing.T) {
 
 func TestFailer_Error(t *testing.T) {
 	err := errors.New("underlying")
-	throwable := Failer{Err: err}
-	if throwable.Error() != "underlying" {
-		t.Errorf("Expected 'underlying', got '%s'", throwable.Error())
+	failer := Failer{Err: err}
+	if failer.Error() != "underlying" {
+		t.Errorf("Expected 'underlying', got '%s'", failer.Error())
+	}
+}
+
+func TestFailer_Empty(t *testing.T) {
+	failer := Failer{Err: nil}
+	if failer.Error() != "" {
+		t.Errorf("Expected empty error, got '%s'", failer.Error())
 	}
 }
 
@@ -423,7 +545,22 @@ func TestConvertToFailer_ReturnsExistingFailer(t *testing.T) {
 	existing := Failer{Err: errors.New("existing")}
 	parsed := ConvertToFailer(existing)
 	if parsed.Err == nil || parsed.Err.Error() != "existing" {
-		t.Fatalf("Expected existing throwable error, got %v", parsed.Err)
+		t.Fatalf("Expected existing failer error, got %v", parsed.Err)
+	}
+}
+
+func TestConvertToFailer_ReturnsExistingFailerPointer(t *testing.T) {
+	existing := Failer{Err: errors.New("existing")}
+	parsed := ConvertToFailer(&existing)
+	if parsed.Err == nil || parsed.Err.Error() != "existing" {
+		t.Fatalf("Expected existing failer error, got %v", parsed.Err)
+	}
+}
+
+func TestConvertToFailer_ReturnsEmptyFailer(t *testing.T) {
+	parsed := ConvertToFailer(nil)
+	if parsed.Err != nil {
+		t.Fatalf("Expected nil Err, got %v", parsed.Err)
 	}
 }
 
@@ -440,8 +577,8 @@ func TestConvertToFailer_WrapsNonFailerError(t *testing.T) {
 
 func TestFailer_Unwrap(t *testing.T) {
 	err := errors.New("underlying")
-	throwable := Failer{Err: err}
-	if !errors.Is(throwable, err) {
+	failer := Failer{Err: err}
+	if !errors.Is(failer, err) {
 		t.Error("Expected errors.Is to work with Unwrap")
 	}
 }
