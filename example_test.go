@@ -32,23 +32,16 @@ func ExampleFailWith() {
 	// This will panic and be caught by the defer
 }
 
-// ExampleFailCheck0 demonstrates FailCheck0 usage for error-only functions.
-func ExampleFailCheck0() {
-	relax.FailCheck0(doSomething())
-	fmt.Println("done")
-	// Output: done
-}
-
-// ExampleGuard demonstrates safe recovery.
-func ExampleGuard() {
-	result, err := relax.Guard(func() string {
+// ExampleGuardValue demonstrates safe recovery.
+func ExampleGuardValue() {
+	result, err := relax.GuardValue(func() string {
 		// Simulate a call chain with FailCheck
 		data := relax.FailCheck(parseData("input"))
 		return relax.FailCheck(processData(data))
 	})
 
 	if err != nil {
-		log.Printf("Guardd error: %s", err)
+		log.Printf("GuardValued error: %s", err)
 	} else {
 		fmt.Println(result)
 	}

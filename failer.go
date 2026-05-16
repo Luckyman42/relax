@@ -14,7 +14,7 @@ import (
 // map[string]any Context for arbitrary key/value metadata. The library uses
 // `Failer` values to implement structured panic-based propagation inside
 // trusted internal call chains: callers may `panic` a `Failer` (via
-// `FailWith` or `Failer.Fail`) and a `Guard` boundary will convert that panic
+// `FailWith` or `Failer.Fail`) and a `GuardValue` boundary will convert that panic
 // back into a returned `error`.
 //
 // This symbol is a type alias to the internal implementation to keep the
@@ -122,6 +122,18 @@ func FailWith(err error, keyVals ...any) {
 	default:
 		panic(newFailer(err, keyVals...))
 	}
+}
+
+// FailCheck returns `v` if `err == nil`; otherwise it throws the error via
+// `FailWith(err, keyVals...)`.
+//
+// This reduces error-forwarding boilerplate inside internal call chains where
+// panic-based propagation is acceptable. Prefer explicit returns in public APIs.
+func FailCheck[T any](v T, err error, keyVals ...any) T {
+	if err != nil {
+		FailWith(err, keyVals...)
+	}
+	return v
 }
 
 // ConvertToFailer converts any error into a `Failer` value.

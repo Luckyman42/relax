@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	result, err := relax.Guard(func() string {
+	result, err := relax.GuardValue(func() string {
 		data := relax.FailCheck(fetch())
 		return relax.FailCheck(process(data))
 	})
