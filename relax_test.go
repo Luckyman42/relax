@@ -2,6 +2,7 @@ package relax
 
 import (
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -442,5 +443,68 @@ func TestFailer_Unwrap(t *testing.T) {
 	throwable := Failer{Err: err}
 	if !errors.Is(throwable, err) {
 		t.Error("Expected errors.Is to work with Unwrap")
+	}
+}
+
+func TestConvertToFailer_Nil(t *testing.T) {
+	var err error = nil
+	f := ConvertToFailer(err)
+	if f.Err != nil {
+		t.Fatalf("Expected nil Err, got %v", f.Err)
+	}
+}
+
+func TestRecoverInto_RepanicsNonFailer(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Expected re-panic, but none occurred")
+		}
+		if r != "panic-now" {
+			t.Fatalf("Expected 'panic-now', got %v", r)
+		}
+	}()
+
+	// Guard should re-panic non-Failer panics; exercise that behavior here.
+	_, _ = Guard(func() int {
+		panic("panic-now")
+	})
+}
+
+func TestFailerConcurrency(t *testing.T) {
+	const n = 8
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_, err := Guard(func() string {
+				FailWith(errors.New("concurrent"))
+				return ""
+			})
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	count := 0
+	for e := range errs {
+		if e == nil {
+			t.Errorf("expected error but got nil")
+		} else {
+			count++
+		}
+	}
+	if count != n {
+		t.Fatalf("expected %d errors, got %d", n, count)
+	}
+}
+
+func BenchmarkConvertToFailer(b *testing.B) {
+	err := errors.New("bench")
+	for i := 0; i < b.N; i++ {
+		_ = ConvertToFailer(err)
 	}
 }

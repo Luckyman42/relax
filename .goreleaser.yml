@@ -1,0 +1,35 @@
+project_name: relax
+
+builds:
+  - id: relax-example
+    dir: examples/simple
+    main: .
+    binary: relax-example
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - format: tar.gz
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+    replacements:
+      darwin: macOS
+
+changelog:
+  use: git
+  compare_url_format: "https://github.com/luckyman42/relax/compare/{{previousTag}}...{{nextTag}}"
+
+release:
+  draft: false
+  prerelease: false

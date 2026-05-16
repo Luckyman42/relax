@@ -1,6 +1,11 @@
 # Relax
 
-> Don't **Panic**, just **Relax**!
+[![CI](https://img.shields.io/github/actions/workflow/status/luckyman42/relax/ci.yml?branch=main&label=ci)](https://github.com/luckyman42/relax/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/luckyman42/relax)](https://goreportcard.com/report/github.com/luckyman42/relax)
+[![pkg.go.dev](https://pkg.go.dev/badge/github.com/luckyman42/relax)](https://pkg.go.dev/github.com/luckyman42/relax)
+[![License](https://img.shields.io/github/license/luckyman42/relax)](LICENSE)
+
+Don't **Panic**, just **Relax**!
 
 Relax is a small Go toolkit for structured, typed panic-based propagation inside trusted internal paths.
 It is designed to reduce boilerplate where many layers only forward errors without handling them.
@@ -106,16 +111,24 @@ Avoid Relax for:
 - control flow that should not be modeled as panic propagation
 - hiding bugs or resource management issues
 
-## Installation
+## Quick start
+
+Install or add the module with:
 
 ```bash
 go get github.com/luckyman42/relax
 ```
 
+Import in your code as:
+
+```go
+import "github.com/luckyman42/relax"
+```
+
 ## Basic usage
 
 ```go
-import "relax"
+import "github.com/luckyman42/relax"
 
 func Service() string {
     data := relax.FailCheck(fetchData())
@@ -212,7 +225,7 @@ func Guard() {
 
 ## Examples
 
-See `example_test.go` for concrete patterns.
+Runnable examples live in the `examples/` directory. See [examples/simple/main.go](examples/simple/main.go) and the package examples in [example_test.go](example_test.go).
 
 ## License
 
