@@ -1,10 +1,11 @@
 # Relax
 
 [![CI](https://img.shields.io/github/actions/workflow/status/luckyman42/relax/ci.yml?branch=main&label=ci)](https://github.com/luckyman42/relax/actions)
+[![codecov](https://codecov.io/gh/luckyman42/relax/branch/main/graph/badge.svg)](https://codecov.io/gh/luckyman42/relax)
 [![Go Report Card](https://goreportcard.com/badge/github.com/luckyman42/relax)](https://goreportcard.com/report/github.com/luckyman42/relax)
 [![pkg.go.dev](https://pkg.go.dev/badge/github.com/luckyman42/relax)](https://pkg.go.dev/github.com/luckyman42/relax)
+![Go Version](https://img.shields.io/github/go-mod/go-version/luckyman42/relax)
 [![License](https://img.shields.io/github/license/luckyman42/relax)](LICENSE)
-
 > Don't **panic**, just **relax**!
 
 Typed, structured panic-based propagation for well-defined internal boundaries.

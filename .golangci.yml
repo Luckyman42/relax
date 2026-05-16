@@ -7,6 +7,8 @@ linters:
     - errcheck
     - staticcheck
     - unused
+    - ineffassign
+    - gosimple
 
 issues:
   exclude-use-default: false
