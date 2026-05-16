@@ -1,35 +1,28 @@
+version: 2
+
 project_name: relax
 
+before:
+  hooks:
+    - go mod tidy
+
 builds:
-  - id: relax-example
-    dir: examples/simple
-    main: .
-    binary: relax-example
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w
+  - skip: true
 
 archives:
   - format: tar.gz
-    files:
-      - LICENSE
-      - README.md
-      - CHANGELOG.md
-    replacements:
-      darwin: macOS
+    name_template: "{{ .ProjectName }}_{{ .Version }}"
 
-changelog:
-  use: git
-  compare_url_format: "https://github.com/luckyman42/relax/compare/{{previousTag}}...{{nextTag}}"
+checksum:
+  name_template: "checksums.txt"
 
 release:
   draft: false
-  prerelease: false
+  prerelease: auto
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
