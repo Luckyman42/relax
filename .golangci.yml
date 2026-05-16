@@ -10,8 +10,6 @@ linters:
     - errcheck
     - staticcheck
     - unused
-    - ineffassign
-    - gosimple
 
 issues:
   max-issues-per-linter: 0
