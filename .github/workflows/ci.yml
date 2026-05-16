@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [1.21, 1.22, 1.23, 1.24, 1.25]
+        go-version: [1.25, 1.26]
 
     steps:
       - uses: actions/checkout@v4
@@ -32,8 +32,13 @@ jobs:
           go mod tidy
           git diff --exit-code || (echo "go mod tidy produced changes" && exit 1)
 
-      - name: Run tests
+      - name: Run tests (with coverage)
+        if: matrix.go-version == '1.25'
         run: go test ./... -race -coverprofile=coverage.out
+
+      - name: Run tests (no coverage)
+        if: matrix.go-version != '1.25'
+        run: go test ./... -race
 
       - name: Run go vet
         run: go vet ./...
