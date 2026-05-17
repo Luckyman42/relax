@@ -8,65 +8,125 @@ import (
 	"github.com/luckyman42/relax"
 )
 
-// ExampleFailCheck demonstrates basic FailCheck usage for reducing boilerplate.
-func ExampleFailCheck() {
-	// Instead of:
-	// v, err := someFunc()
-	// if err != nil { return err }
-	// Use:
-	v := relax.FailCheck(someFunc())
-	fmt.Println(v)
-	// Output: success
+func fetchUser(id int) (string, error) {
+	return "", errors.New("database unavailable")
 }
 
-// ExampleFailWith demonstrates throwing an error with context.
-func ExampleFailWith() {
-	defer func() {
-		if r := recover(); r != nil {
-			if throwable, ok := r.(relax.Failer); ok {
-				log.Printf("Caught: %s\nStack: %s\nUser: %v", throwable.Err, throwable.Stack, throwable.Context["user"])
-			}
-		}
-	}()
-	relax.FailWith(errors.New("example error"), "user", "alice", "route", "/login")
-	// This will panic and be caught by the defer
-}
-
-// ExampleGuardValue demonstrates safe recovery.
 func ExampleGuardValue() {
-	result, err := relax.GuardValue(func() string {
-		// Simulate a call chain with FailCheck
-		data := relax.FailCheck(parseData("input"))
-		return relax.FailCheck(processData(data))
+	profile, err := relax.GuardValue(func() string {
+		return relax.FailCheck(fetchUser(42))
 	})
 
 	if err != nil {
-		log.Printf("GuardValued error: %s", err)
-	} else {
-		fmt.Println(result)
+		var failer relax.Failer
+		if errors.As(err, &failer) {
+			fmt.Println(failer.Err)
+			fmt.Println(failer.Context["operation"])
+		}
+		return
 	}
-	// Output: processed:parsed:input
+
+	fmt.Println(profile)
+
+	// Output:
+	// database unavailable
+	// load_profile
 }
 
-// Helper functions for examples
-func someFunc() (string, error) {
-	return "success", nil
+func ExampleGuard() {
+	err := relax.Guard(func() {
+		relax.FailWith(errors.New("something failed"))
+	})
+
+	fmt.Println(err)
+
+	// Output:
+	// something failed
 }
 
-func parseData(input string) (string, error) {
-	if input == "" {
-		return "", errors.New("empty input")
+func ExampleConvertToFailer() {
+	err := errors.New("boom")
+
+	failer := relax.ConvertToFailer(err)
+
+	fmt.Println(failer.Err)
+	fmt.Println(failer.Timestamp.IsZero())
+	fmt.Println(len(failer.Stack) > 0)
+
+	// Output:
+	// boom
+	// false
+	// true
+}
+
+func ExampleIsFailer() {
+	failer := relax.ConvertToFailer(errors.New("failure"))
+
+	fmt.Println(relax.IsFailer(failer))
+	fmt.Println(relax.IsFailer(errors.New("normal error")))
+
+	// Output:
+	// true
+	// false
+}
+
+func ExampleFailer_Fail() {
+	err := relax.Guard(func() {
+		failer := relax.ConvertToFailer(errors.New("repository failed"))
+
+		failer.Fail(
+			"repository", "users",
+			"operation", "find",
+		)
+	})
+
+	var failer relax.Failer
+	if errors.As(err, &failer) {
+		fmt.Println(failer.Err)
+		fmt.Println(failer.Context["repository"])
 	}
-	return "parsed:" + input, nil
+
+	// Output:
+	// repository failed
+	// users
 }
 
-func processData(data string) (string, error) {
-	if data == "" {
-		return "", errors.New("no data")
+func ExampleGuardResult() {
+	value, err := relax.GuardResult(func() (int, error) {
+		if true {
+			relax.FailWith(errors.New("calculation failed"))
+		}
+
+		return 42, nil
+	})
+
+	fmt.Println(value)
+	fmt.Println(err)
+
+	// Output:
+	// 0
+	// calculation failed
+}
+
+func Example_realisticServiceFlow() {
+	loadUser := func(id int) (string, error) {
+		return "", errors.New("user not found")
 	}
-	return "processed:" + data, nil
-}
 
-func doSomething() error {
-	return nil
+	err := relax.GuardErr(func() error {
+		user := relax.FailCheck(loadUser(99))
+
+		log.Println(user)
+		return nil
+	})
+
+	var failer relax.Failer
+	if errors.As(err, &failer) {
+		fmt.Println(failer.Err)
+		fmt.Println(failer.Context["user_id"])
+	}
+
+	// Output:
+	// user not found
+	// 99
 }

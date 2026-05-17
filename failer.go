@@ -125,13 +125,13 @@ func FailWith(err error, keyVals ...any) {
 }
 
 // FailCheck returns `v` if `err == nil`; otherwise it throws the error via
-// `FailWith(err, keyVals...)`.
+// `FailWith(err)`.
 //
 // This reduces error-forwarding boilerplate inside internal call chains where
 // panic-based propagation is acceptable. Prefer explicit returns in public APIs.
-func FailCheck[T any](v T, err error, keyVals ...any) T {
+func FailCheck[T any](v T, err error) T {
 	if err != nil {
-		FailWith(err, keyVals...)
+		FailWith(err)
 	}
 	return v
 }
