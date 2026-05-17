@@ -2,6 +2,8 @@ package relax
 
 import (
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 )
 
@@ -175,5 +177,105 @@ func TestGuard_Failer(t *testing.T) {
 	}
 	if failer.Err.Error() != "unwind0 error" {
 		t.Errorf("Expected 'unwind0 error', got '%s'", failer.Err.Error())
+	}
+}
+
+func TestGuardHandle_FailerPropagation(t *testing.T) {
+	var mu sync.Mutex
+	var got error
+
+	GuardHandle(func() {
+		FailWith(errors.New("worker failed"))
+	}, func(err error) {
+		mu.Lock()
+		got = err
+		mu.Unlock()
+	})
+
+	if got == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	if got.Error() != "worker failed" {
+		t.Fatalf("unexpected error: %v", got)
+	}
+}
+
+func TestGuardHandle_NilOnErrorPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic when onError is nil")
+		}
+	}()
+
+	GuardHandle(func() {
+		// no-op
+	}, nil)
+}
+
+func TestGuardGo_FailerPropagation(t *testing.T) {
+	done := make(chan error, 1)
+
+	GuardGo(func() {
+		FailWith(errors.New("async failed"))
+	}, func(err error) {
+		done <- err
+	})
+
+	err := <-done
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	if err.Error() != "async failed" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGuardGo_NilOnErrorPanicsBeforeGoroutine(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic when onError is nil")
+		}
+	}()
+
+	GuardGo(func() {
+		// should not run
+	}, nil)
+}
+
+func TestGuardGo_ConcurrentMultipleCalls(t *testing.T) {
+	const n = 50
+
+	done := make(chan struct{}, n)
+	errs := make(chan error, n)
+
+	for i := 0; i < n; i++ {
+		i := i
+
+		GuardGo(func() {
+			if i%2 == 0 {
+				FailWith(fmt.Errorf("fail %d", i))
+			}
+		}, func(err error) {
+			errs <- err
+			done <- struct{}{}
+		})
+	}
+
+	count := 0
+
+	for count < n/2 {
+		<-done
+		count++
+	}
+
+	close(errs)
+
+	for err := range errs {
+		if err == nil {
+			t.Fatal("unexpected nil error")
+		}
 	}
 }

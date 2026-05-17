@@ -21,7 +21,6 @@ func ExampleGuardValue() {
 		var failer relax.Failer
 		if errors.As(err, &failer) {
 			fmt.Println(failer.Err)
-			fmt.Println(failer.Context["operation"])
 		}
 		return
 	}
@@ -30,7 +29,6 @@ func ExampleGuardValue() {
 
 	// Output:
 	// database unavailable
-	// load_profile
 }
 
 func ExampleGuard() {
@@ -123,10 +121,62 @@ func Example_realisticServiceFlow() {
 	var failer relax.Failer
 	if errors.As(err, &failer) {
 		fmt.Println(failer.Err)
-		fmt.Println(failer.Context["user_id"])
+	}
+
+	// Output:
+	// user not found
+}
+
+func Example_failerWithContext() {
+	loadUser := func(id int) (string, error) {
+		return "", errors.New("user not found")
+	}
+
+	err := relax.GuardErr(func() error {
+		user, err := loadUser(99)
+
+		if err != nil {
+			relax.FailWith(err, "userid", 99)
+		}
+
+		log.Println(user)
+		return nil
+	})
+
+	var failer relax.Failer
+	if errors.As(err, &failer) {
+		fmt.Println(failer.Err)
+		fmt.Println(failer.Context["userid"])
 	}
 
 	// Output:
 	// user not found
 	// 99
+}
+
+func ExampleGuardHandle() {
+	relax.GuardHandle(func() {
+		relax.FailWith(errors.New("worker failed"))
+	}, func(err error) {
+		fmt.Println(err)
+	})
+
+	// Output:
+	// worker failed
+}
+
+func ExampleGuardGo() {
+	done := make(chan struct{})
+
+	relax.GuardGo(func() {
+		relax.FailWith(errors.New("async failure"))
+	}, func(err error) {
+		fmt.Println(err)
+		close(done)
+	})
+
+	<-done
+
+	// Output:
+	// async failure
 }

@@ -143,7 +143,8 @@ if err != nil {
 
 ## `Guard*`
 
-`Guard`, `GuardValue`, `GuardErr`, and `GuardResult` define explicit recovery boundaries.
+`Guard`, `GuardValue`, `GuardErr` and `GuardResult` define explicit recovery boundaries.
+`GuardHandle` and `GuardGo` extend the Guard boundary model into explicit error-handling and goroutine execution boundaries.
 
 They:
 
@@ -285,6 +286,24 @@ Protects `(T, error)` style functions.
 
 ---
 
+### `GuardHandle`
+
+```go
+func GuardHandle(fn func(), onError func(error))
+```
+
+Executes a guarded function and forwards recovered failures to a handler.
+
+---
+### `GuardGo`
+
+```go
+func GuardGo(fn func(), onError func(error))
+```
+
+Starts a guarded goroutine.
+
+
 ## Utilities
 
 ### `ConvertToFailer`
@@ -308,6 +327,24 @@ func IsFailer(err error) bool
 Reports whether an error is or wraps a `Failer`.
 
 ---
+
+# Safe Goroutines
+
+One of the most practical uses of `relax` is protecting goroutine entry points.
+
+Instead of:
+
+```go
+go worker()
+```
+
+use
+
+```go
+relax.GuardGo(worker, logger.Error)
+```
+
+This guarantees that internal Failer propagation cannot terminate the goroutine silently ,while non-library panics still propagate normally.
 
 # Design Philosophy
 
@@ -354,6 +391,8 @@ A common pattern is:
 1. Use `FailCheck` and `FailWith` internally.
 2. Recover once at a clear boundary with `Guard*`.
 3. Log or translate the returned error.
+
+> +1 `GuardGo` is the recommended entry point for goroutines.
 
 ---
 
