@@ -81,6 +81,25 @@ func TestGuardValue_FailerPointer(t *testing.T) {
 	}
 }
 
+func TestGuardValue_PointerToAFailer(t *testing.T) {
+	result, err := GuardValue(func() int {
+		panic(&Failer{Err: errors.New("thrown error")})
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got none")
+	}
+	var failer Failer
+	if !errors.As(err, &failer) {
+		t.Fatalf("Expected Failer, got %T", err)
+	}
+	if failer.Err.Error() != "thrown error" {
+		t.Errorf("Expected 'thrown error', got '%s'", failer.Err.Error())
+	}
+	if result != 0 {
+		t.Errorf("Expected 0, got %d", result)
+	}
+}
+
 func TestGuardValue_OtherPanic(t *testing.T) {
 	defer func() {
 		r := recover()

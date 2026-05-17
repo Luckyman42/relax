@@ -46,6 +46,16 @@ func TestFailWith_Pointer(t *testing.T) {
 	FailWith(&Failer{Err: errors.New("test error")})
 }
 
+func TestFailWith_nil(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r != nil {
+			t.Fatal("Expected panic, but none occurred")
+		}
+	}()
+	FailWith(nil)
+}
+
 func TestFailWith_Context(t *testing.T) {
 	defer func() {
 		r := recover()
@@ -149,6 +159,9 @@ func TestIsFailer(t *testing.T) {
 	}
 	if !IsFailer(&existing) {
 		t.Error("Expected IsFailer to return true for Failer pointer")
+	}
+	if IsFailer(nil) {
+		t.Error("Expected IsFailer to return true for Failer value")
 	}
 	if IsFailer(errors.New("plain error")) {
 		t.Error("Expected IsFailer to return false for plain error")
