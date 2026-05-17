@@ -21,6 +21,78 @@ It reduces repetitive `if err != nil { return err }` forwarding while preserving
 Unlike generic panic wrappers, `relax` keeps failure propagation explicit and typed through the `Failer` type.
 
 ---
+# Quick Start
+
+## Installation
+
+```bash
+go get github.com/luckyman42/relax
+```
+
+```go
+import "github.com/luckyman42/relax"
+```
+
+## Quick Example
+
+```go
+package main
+
+import (
+    "errors"
+    "fmt"
+    "log"
+
+    "github.com/luckyman42/relax"
+)
+
+func possibleError(id int) (string, error) {
+    return "", errors.New("Some Error")
+}
+
+func innerFunction(id int) string {
+    return relax.FailCheck(fetchUser(id))
+}
+
+func main() {
+    profile, err := relax.GuardValue(func() string {
+        return innerFunction(42)
+    })
+
+    if err != nil {
+        var failer relax.Failer
+        if errors.As(err, &failer) {
+            logger.Error("error: %v", failer.Err)
+        }
+        return
+    }
+}
+```
+
+```go
+
+err := relax.Guard(func() {
+    relax.FailWith(errors.New("Some Error"))
+})
+
+if err != nil {
+    failer := relax.ConvertToFailer(err)
+    logger.Error("error: %v", failer.Err)
+    return
+}
+
+```
+For safe goroutine
+
+```go
+func process() {....}
+
+func main(){
+    relax.GuardGo(process, logger.Error)
+}
+```
+
+---
 
 # Why?
 
@@ -161,60 +233,6 @@ Programmer bugs such as:
 * invariant violations
 
 still crash normally instead of being silently converted into errors.
-
----
-
-# Installation
-
-```bash
-go get github.com/luckyman42/relax
-```
-
-```go
-import "github.com/luckyman42/relax"
-```
-
----
-
-# Quick Example
-
-```go
-package main
-
-import (
-    "errors"
-    "fmt"
-    "log"
-
-    "github.com/luckyman42/relax"
-)
-
-func fetchUser(id int) (string, error) {
-    return "", errors.New("database unavailable")
-}
-
-func loadProfile(id int) string {
-    return relax.FailCheck(fetchUser(id))
-}
-
-func main() {
-    profile, err := relax.GuardValue(func() string {
-        return loadProfile(42)
-    })
-
-    if err != nil {
-        var failer relax.Failer
-        if errors.As(err, &failer) {
-            log.Printf("error: %v", failer.Err)
-            log.Printf("context: %+v", failer.Context)
-            log.Printf("timestamp: %v", failer.Timestamp)
-        }
-        return
-    }
-
-    fmt.Println(profile)
-}
-```
 
 ---
 
