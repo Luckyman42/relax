@@ -14,11 +14,8 @@ import (
 // map[string]any Context for arbitrary key/value metadata. The library uses
 // `Failer` values to implement structured panic-based propagation inside
 // trusted internal call chains: callers may `panic` a `Failer` (via
-// `FailWith` or `Failer.Fail`) and a `GuardValue` boundary will convert that panic
+// `FailWith` or `Failer.Fail`) and a `CheckValue` boundary will convert that panic
 // back into a returned `error`.
-//
-// This symbol is a type alias to the internal implementation to keep the
-// public surface stable while the implementation lives under
 type Failer struct {
 	Err       error
 	Stack     []byte
@@ -124,16 +121,32 @@ func FailWith(err error, keyVals ...any) {
 	}
 }
 
-// FailCheck returns `v` if `err == nil`; otherwise it throws the error via
+// FailOnError returns `v` if `err == nil`; otherwise it throws the error via
 // `FailWith(err)`.
 //
 // This reduces error-forwarding boilerplate inside internal call chains where
 // panic-based propagation is acceptable. Prefer explicit returns in public APIs.
-func FailCheck[T any](v T, err error) T {
+func FailOnError[T any](v T, err error) T {
 	if err != nil {
 		FailWith(err)
 	}
 	return v
+}
+
+// FailOnError2 returns v1 and v2 if err == nil; otherwise it throws the error via FailWith(err).
+func FailOnError2[T1, T2 any](v1 T1, v2 T2, err error) (T1, T2) {
+	if err != nil {
+		FailWith(err)
+	}
+	return v1, v2
+}
+
+// FailOnError3 returns v1, v2 and v3 if err == nil; otherwise it throws the error via FailWith(err).
+func FailOnError3[T1, T2, T3 any](v1 T1, v2 T2, v3 T3, err error) (T1, T2, T3) {
+	if err != nil {
+		FailWith(err)
+	}
+	return v1, v2, v3
 }
 
 // ConvertToFailer converts any error into a `Failer` value.

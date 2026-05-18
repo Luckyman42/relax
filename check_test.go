@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func TestGuardValue_CatchAndRethrowPreservesFailCheckError(t *testing.T) {
-	_, err := GuardValue(func() string {
-		_, innerErr := GuardValue(func() string {
-			return FailCheck("ok", errors.New("must fail"))
+func TestCheckValue_CatchAndRethrowPreservesFailOnErrorError(t *testing.T) {
+	_, err := CheckValue(func() string {
+		_, innerErr := CheckValue(func() string {
+			return FailOnError("ok", errors.New("must fail"))
 		})
 		if innerErr != nil {
 			FailWith(innerErr)
@@ -24,13 +24,14 @@ func TestGuardValue_CatchAndRethrowPreservesFailCheckError(t *testing.T) {
 	if !errors.As(err, &failer) {
 		t.Fatalf("Expected Failer, got %T", err)
 	}
-	if errors.As(failer.Err, &Failer{}) {
+	var nested Failer
+	if errors.As(failer.Err, &nested) {
 		t.Error("Expected underlying Err not to be a nested Failer")
 	}
 }
 
-func TestGuardValue_Success(t *testing.T) {
-	result, err := GuardValue(func() int {
+func TestCheckValue_Success(t *testing.T) {
+	result, err := CheckValue(func() int {
 		return 42
 	})
 	if err != nil {
@@ -41,8 +42,8 @@ func TestGuardValue_Success(t *testing.T) {
 	}
 }
 
-func TestGuardValue_Failer(t *testing.T) {
-	result, err := GuardValue(func() int {
+func TestCheckValue_Failer(t *testing.T) {
+	result, err := CheckValue(func() int {
 		FailWith(errors.New("thrown error"))
 		return 0
 	})
@@ -61,8 +62,8 @@ func TestGuardValue_Failer(t *testing.T) {
 	}
 }
 
-func TestGuardValue_FailerPointer(t *testing.T) {
-	result, err := GuardValue(func() int {
+func TestCheckValue_FailerPointer(t *testing.T) {
+	result, err := CheckValue(func() int {
 		FailWith(&Failer{Err: errors.New("thrown error")})
 		return 0
 	})
@@ -81,8 +82,8 @@ func TestGuardValue_FailerPointer(t *testing.T) {
 	}
 }
 
-func TestGuardValue_PointerToAFailer(t *testing.T) {
-	result, err := GuardValue(func() int {
+func TestCheckValue_PointerToAFailer(t *testing.T) {
+	result, err := CheckValue(func() int {
 		panic(&Failer{Err: errors.New("thrown error")})
 	})
 	if err == nil {
@@ -100,7 +101,7 @@ func TestGuardValue_PointerToAFailer(t *testing.T) {
 	}
 }
 
-func TestGuardValue_OtherPanic(t *testing.T) {
+func TestCheckValue_OtherPanic(t *testing.T) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -111,13 +112,37 @@ func TestGuardValue_OtherPanic(t *testing.T) {
 		}
 	}()
 
-	_, _ = GuardValue(func() int {
+	_, _ = CheckValue(func() int {
 		panic("other panic")
 	})
 }
 
-func TestGuardResult_Success(t *testing.T) {
-	result, err := GuardResult(func() (int, error) {
+func TestCheckValue2_Success(t *testing.T) {
+	result1, result2, err := CheckValue2(func() (int, string) {
+		return 42, "ok"
+	})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result1 != 42 || result2 != "ok" {
+		t.Fatalf("Expected (42, ok), got (%d, %s)", result1, result2)
+	}
+}
+
+func TestCheckValue3_Success(t *testing.T) {
+	result1, result2, result3, err := CheckValue3(func() (int, string, bool) {
+		return 42, "ok", true
+	})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result1 != 42 || result2 != "ok" || !result3 {
+		t.Fatalf("Expected (42, ok, true), got (%d, %s, %v)", result1, result2, result3)
+	}
+}
+
+func TestCheckResult_Success(t *testing.T) {
+	result, err := CheckResult(func() (int, error) {
 		return 42, nil
 	})
 	if err != nil {
@@ -128,8 +153,8 @@ func TestGuardResult_Success(t *testing.T) {
 	}
 }
 
-func TestGuardResult_Failer(t *testing.T) {
-	result, err := GuardResult(func() (int, error) {
+func TestCheckResult_Failer(t *testing.T) {
+	result, err := CheckResult(func() (int, error) {
 		FailWith(errors.New("thrown error"))
 		return 0, nil
 	})
@@ -148,8 +173,61 @@ func TestGuardResult_Failer(t *testing.T) {
 	}
 }
 
-func TestGuardErr_Success(t *testing.T) {
-	err := GuardErr(func() error {
+func TestCheckResult2_Success(t *testing.T) {
+	result1, result2, err := CheckResult2(func() (int, string, error) {
+		return 42, "ok", nil
+	})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result1 != 42 || result2 != "ok" {
+		t.Fatalf("Expected (42, ok), got (%d, %s)", result1, result2)
+	}
+}
+
+func TestCheckResult2_ReturnedError(t *testing.T) {
+	_, _, err := CheckResult2(func() (int, string, error) {
+		return 0, "", errors.New("returned error")
+	})
+	if err == nil || err.Error() != "returned error" {
+		t.Fatalf("Expected returned error, got %v", err)
+	}
+}
+
+func TestCheckResult3_Success(t *testing.T) {
+	result1, result2, result3, err := CheckResult3(func() (int, string, bool, error) {
+		return 42, "ok", true, nil
+	})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result1 != 42 || result2 != "ok" || !result3 {
+		t.Fatalf("Expected (42, ok, true), got (%d, %s, %v)", result1, result2, result3)
+	}
+}
+
+func TestCheckResult3_Failer(t *testing.T) {
+	result1, result2, result3, err := CheckResult3(func() (int, string, bool, error) {
+		FailWith(errors.New("thrown error"))
+		return 0, "", false, nil
+	})
+	if err == nil {
+		t.Fatal("Expected error, but got nil")
+	}
+	var failer Failer
+	if !errors.As(err, &failer) {
+		t.Fatalf("Expected Failer, got %T", err)
+	}
+	if failer.Err.Error() != "thrown error" {
+		t.Errorf("Expected 'thrown error', got '%s'", failer.Err.Error())
+	}
+	if result1 != 0 || result2 != "" || result3 {
+		t.Fatalf("Expected zero values, got (%d, %s, %v)", result1, result2, result3)
+	}
+}
+
+func TestCheckError_Success(t *testing.T) {
+	err := CheckError(func() error {
 		return nil
 	})
 	if err != nil {
@@ -157,8 +235,8 @@ func TestGuardErr_Success(t *testing.T) {
 	}
 }
 
-func TestGuardErr_Failer(t *testing.T) {
-	err := GuardErr(func() error {
+func TestCheckError_Failer(t *testing.T) {
+	err := CheckError(func() error {
 		FailWith(errors.New("thrown error"))
 		return nil
 	})
@@ -174,8 +252,8 @@ func TestGuardErr_Failer(t *testing.T) {
 	}
 }
 
-func TestGuard_Success(t *testing.T) {
-	err := Guard(func() {
+func TestCheckFailer_Success(t *testing.T) {
+	err := CheckFailer(func() {
 		// no thrown error
 	})
 	if err != nil {
@@ -183,8 +261,8 @@ func TestGuard_Success(t *testing.T) {
 	}
 }
 
-func TestGuard_Failer(t *testing.T) {
-	err := Guard(func() {
+func TestCheckFailer_Failer(t *testing.T) {
+	err := CheckFailer(func() {
 		FailWith(errors.New("unwind0 error"))
 	})
 	if err == nil {
@@ -199,11 +277,11 @@ func TestGuard_Failer(t *testing.T) {
 	}
 }
 
-func TestGuardHandle_FailerPropagation(t *testing.T) {
+func TestHandleFailer_FailerPropagation(t *testing.T) {
 	var mu sync.Mutex
 	var got error
 
-	GuardHandle(func() {
+	HandleFailer(func() {
 		FailWith(errors.New("worker failed"))
 	}, func(err error) {
 		mu.Lock()
@@ -220,22 +298,22 @@ func TestGuardHandle_FailerPropagation(t *testing.T) {
 	}
 }
 
-func TestGuardHandle_NilOnErrorPanics(t *testing.T) {
+func TestHandleFailer_NilOnErrorPanics(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatal("expected panic when onError is nil")
 		}
 	}()
 
-	GuardHandle(func() {
+	HandleFailer(func() {
 		// no-op
 	}, nil)
 }
 
-func TestGuardGo_FailerPropagation(t *testing.T) {
+func TestHandleFailer_GoroutinePropagation(t *testing.T) {
 	done := make(chan error, 1)
 
-	GuardGo(func() {
+	go HandleFailer(func() {
 		FailWith(errors.New("async failed"))
 	}, func(err error) {
 		done <- err
@@ -252,19 +330,19 @@ func TestGuardGo_FailerPropagation(t *testing.T) {
 	}
 }
 
-func TestGuardGo_NilOnErrorPanicsBeforeGoroutine(t *testing.T) {
+func TestHandleFailer_GoroutineNilOnErrorPanics(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatal("expected panic when onError is nil")
 		}
 	}()
 
-	GuardGo(func() {
+	HandleFailer(func() {
 		// should not run
 	}, nil)
 }
 
-func TestGuardGo_ConcurrentMultipleCalls(t *testing.T) {
+func TestHandleFailer_ConcurrentMultipleCalls(t *testing.T) {
 	const n = 50
 
 	done := make(chan struct{}, n)
@@ -273,7 +351,7 @@ func TestGuardGo_ConcurrentMultipleCalls(t *testing.T) {
 	for i := 0; i < n; i++ {
 		i := i
 
-		GuardGo(func() {
+		go HandleFailer(func() {
 			if i%2 == 0 {
 				FailWith(fmt.Errorf("fail %d", i))
 			}
@@ -284,7 +362,6 @@ func TestGuardGo_ConcurrentMultipleCalls(t *testing.T) {
 	}
 
 	count := 0
-
 	for count < n/2 {
 		<-done
 		count++

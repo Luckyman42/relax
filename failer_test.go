@@ -168,14 +168,14 @@ func TestIsFailer(t *testing.T) {
 	}
 }
 
-func TestFailCheck_Success(t *testing.T) {
-	result := FailCheck(42, nil)
+func TestFailOnError_Success(t *testing.T) {
+	result := FailOnError(42, nil)
 	if result != 42 {
 		t.Errorf("Expected 42, got %d", result)
 	}
 }
 
-func TestFailCheck_Error(t *testing.T) {
+func TestFailOnError_Error(t *testing.T) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -190,7 +190,57 @@ func TestFailCheck_Error(t *testing.T) {
 		}
 	}()
 
-	FailCheck(0, errors.New("must error"))
+	FailOnError(0, errors.New("must error"))
+}
+
+func TestFailOnError2_Success(t *testing.T) {
+	left, right := FailOnError2(42, "ok", nil)
+	if left != 42 || right != "ok" {
+		t.Fatalf("Expected (42, ok), got (%d, %s)", left, right)
+	}
+}
+
+func TestFailOnError2_Error(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Expected panic, but none occurred")
+		}
+		failer, ok := r.(Failer)
+		if !ok {
+			t.Fatalf("Expected Failer, got %T", r)
+		}
+		if failer.Err.Error() != "must error" {
+			t.Errorf("Expected 'must error', got '%s'", failer.Err.Error())
+		}
+	}()
+
+	_, _ = FailOnError2(0, "", errors.New("must error"))
+}
+
+func TestFailOnError3_Success(t *testing.T) {
+	first, second, third := FailOnError3(42, "ok", true, nil)
+	if first != 42 || second != "ok" || !third {
+		t.Fatalf("Expected (42, ok, true), got (%d, %s, %v)", first, second, third)
+	}
+}
+
+func TestFailOnError3_Error(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Expected panic, but none occurred")
+		}
+		failer, ok := r.(Failer)
+		if !ok {
+			t.Fatalf("Expected Failer, got %T", r)
+		}
+		if failer.Err.Error() != "must error" {
+			t.Errorf("Expected 'must error', got '%s'", failer.Err.Error())
+		}
+	}()
+
+	_, _, _ = FailOnError3(0, "", false, errors.New("must error"))
 }
 
 func TestFailer_Error(t *testing.T) {
@@ -278,8 +328,8 @@ func TestRecoverInto_RepanicsNonFailer(t *testing.T) {
 		}
 	}()
 
-	// GuardValue should re-panic non-Failer panics; exercise that behavior here.
-	_, _ = GuardValue(func() int {
+	// CheckValue should re-panic non-Failer panics; exercise that behavior here.
+	_, _ = CheckValue(func() int {
 		panic("panic-now")
 	})
 }
@@ -292,7 +342,7 @@ func TestFailerConcurrency(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			_, err := GuardValue(func() string {
+			_, err := CheckValue(func() string {
 				FailWith(errors.New("concurrent"))
 				return ""
 			})

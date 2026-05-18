@@ -7,21 +7,13 @@
 ![Go Version](https://img.shields.io/github/go-mod/go-version/luckyman42/relax)
 [![License](https://img.shields.io/github/license/luckyman42/relax)](LICENSE)
 
-> Don’t panic — relax.
+> Don't panic - just relax.
 
-`relax` is a small, focused Go library for structured panic-based error propagation inside trusted internal call chains.
+`relax` is a focused library for panic-based error propagation inside trusted internal layers.
 
-It reduces repetitive `if err != nil { return err }` forwarding while preserving:
+The goal is simple: let deep internal code fail fast, recover once at a clear boundary, and keep the outward-facing surface of your package in normal Go `error` form.
 
-* the original error
-* a captured stack trace
-* failure timestamp
-* structured contextual metadata
-
-Unlike generic panic wrappers, `relax` keeps failure propagation explicit and typed through the `Failer` type.
-
----
-# Quick Start
+It is not a replacement for Go's error model. It is a tool for the parts of a codebase where repeated error forwarding adds noise, but the intermediate layers have no real recovery decision to make.
 
 ## Installation
 
@@ -33,515 +25,301 @@ go get github.com/luckyman42/relax
 import "github.com/luckyman42/relax"
 ```
 
-## Quick Example
+## Quick Start
 
 ```go
 package main
 
 import (
-    "errors"
-    "fmt"
-    "log"
+	"errors"
+	"fmt"
 
-    "github.com/luckyman42/relax"
+	"github.com/luckyman42/relax"
 )
 
-func possibleError(id int) (string, error) {
-    return "", errors.New("Some Error")
+type User struct {
+	Name string
 }
 
-func innerFunction(id int) string {
-    return relax.FailCheck(fetchUser(id))
+func fetchUser(id int) (User, error) {
+	return User{}, errors.New("database unavailable")
 }
 
-func main() {
-    profile, err := relax.GuardValue(func() string {
-        return innerFunction(42)
-    })
-
-    if err != nil {
-        var failer relax.Failer
-        if errors.As(err, &failer) {
-            logger.Error("error: %v", failer.Err)
-        }
-        return
-    }
+func HandleRequest(id int) error {
+	return relax.CheckError(func() error {
+		user := relax.FailOnError(fetchUser(id))
+		fmt.Println(user.Name)
+		return nil
+	})
 }
 ```
 
+The mental model is straightforward:
+
+* inside trusted internal code, use `FailOnError*` or `FailWith`
+* at the first boundary that should return a normal Go error, use a `Check*` helper
+
+## Why
+
+Go's explicit error handling is one of the language's strengths. It is especially good at API boundaries, where each caller should decide what to do with the failure.
+
+The problem appears in long internal call chains where intermediate layers do not have anything meaningful to add. In a chain like `A -> B -> C -> D -> E`, if only `A` should decide how to handle an error produced by `E`, then `B`, `C`, and `D` often end up doing nothing except forwarding the same error upward.
+
+That usually turns into repeated boilerplate like this:
+
 ```go
-
-err := relax.Guard(func() {
-    relax.FailWith(errors.New("Some Error"))
-})
-
+value, err := next()
 if err != nil {
-    failer := relax.ConvertToFailer(err)
-    logger.Error("error: %v", failer.Err)
-    return
-}
-
-```
-For safe goroutine
-
-```go
-func process() {....}
-
-func main(){
-    relax.GuardGo(process, logger.Error)
+	return err
 }
 ```
 
----
-
-# Why?
-
-Go’s explicit error handling is excellent at API boundaries.
-
-But inside deep internal call chains, a large amount of code often becomes repetitive forwarding boilerplate:
+With `relax`, the same flow can stay linear:
 
 ```go
-func service() error {
-    data, err := load()
-    if err != nil {
-        return err
-    }
+func A() error {
+	return relax.CheckFailer(B)
+}
 
-    processed, err := transform(data)
-    if err != nil {
-        return err
-    }
+func B() { C() }
 
-    err = save(processed)
-    if err != nil {
-        return err
-    }
+func C() { D() }
 
-    return nil
+func D() {
+	relax.FailWith(E())
+}
+
+func E() error {
+	return errors.New("storage unavailable")
 }
 ```
 
-`relax` provides an alternative for *internal-only* propagation:
+If `E` returned `(T, error)` instead, `D` would typically use `relax.FailOnError(E())`.
 
-```go
-func service() {
-    data := relax.FailCheck(load())
-    processed := relax.FailCheck(transform(data))
-    err := save(processed)
-    if err != nil {
-        relax.FailWith(err)
-    }
-}
+The key point is that `B` and `C` do not need to participate in forwarding a failure that only `A` intends to handle anyway.
+
+## Flow Overview
+
+The diagram below shows the core idea of `relax`: deep internal code fails once, the failure unwinds through trusted layers unchanged, and the outer boundary converts it back into a normal Go `error`.
+
+```mermaid
+sequenceDiagram
+	participant Caller
+	participant A as Boundary A
+	participant B as Layer B
+	participant C as Layer C
+	participant D as Layer D
+	participant E as Layer E
+
+	Caller->>A: call
+	A->>B: call
+	B->>C: call
+	C->>D: call
+	D->>E: call
+	E-->>D: return error
+	D->>D: FailWith(err)
+	D--xC: panic(Failer)
+	C--xB: panic(Failer)
+	B--xA: panic(Failer)
+	A->>A: CheckFailer / CheckError / CheckResult
+	A-->>Caller: return error
 ```
 
-Then recover once at a boundary:
+## Public API
 
-```go
-err := relax.Guard(service)
-//or 
-err := relax.Guard(func(){
-  doSomething(42)
-})
-```
+### Failure Propagation
 
-This keeps the happy-path readable while still preserving structured debugging information.
-
----
-
-# Core Concepts
-
-## `Failer`
-
-`Failer` is the central error type used by the library.
-
-```go
-type Failer struct {
-    Err       error
-    Stack     []byte
-    Timestamp time.Time
-    Context   map[string]any
-}
-```
-
-A `Failer`:
-
-* implements `error`
-* preserves the original error
-* captures a stack trace at failure creation
-* stores optional structured metadata
-* interoperates with `errors.Is` and `errors.As`
-
----
-
-## `FailWith`
-
-`FailWith` converts an error into a `Failer` and panics with it.
-
-```go
-relax.FailWith(err)
-```
-
-Additional contextual metadata can be attached:
-
-```go
-relax.FailWith(err,
-    "user_id", userID,
-    "operation", "create_order",
-)
-```
-
-If the error already is a `Failer`, context is merged instead of double-wrapping.
-
----
-
-## `FailCheck`
-
-`FailCheck` eliminates repetitive forwarding.
-
-```go
-value := relax.FailCheck(load())
-```
-
-Equivalent to:
-
-```go
-value, err := load()
-if err != nil {
-    relax.FailWith(err)
-}
-```
-
----
-
-## `Guard*`
-
-`Guard`, `GuardValue`, `GuardErr` and `GuardResult` define explicit recovery boundaries.
-`GuardHandle` and `GuardGo` extend the Guard boundary model into explicit error-handling and goroutine execution boundaries.
-
-They:
-
-* recover only `Failer` panics
-* convert them back into normal Go errors
-* re-panic every other panic unchanged
-
-This distinction is important.
-
-Programmer bugs such as:
-
-* nil dereferences
-* out-of-bounds access
-* invariant violations
-
-still crash normally instead of being silently converted into errors.
-
----
-
-# API Overview
-
-## Failure Propagation
-
-### `FailWith`
+Use these helpers inside trusted internal layers when a failure should immediately unwind to an outer boundary.
 
 ```go
 func FailWith(err error, keyVals ...any)
+
+func FailOnError[T any](v T, err error) T
+func FailOnError2[T1, T2 any](v1 T1, v2 T2, err error) (T1, T2)
+func FailOnError3[T1, T2, T3 any](v1 T1, v2 T2, v3 T3, err error) (T1, T2, T3)
 ```
 
-Panics with a `Failer`.
+`FailWith` throws an error immediately. The `FailOnError*` helpers are convenience wrappers for the common Go shapes that already return an error.
 
-If `err` already is a `Failer`, it is re-thrown without double wrapping.
+### Recovery Boundaries
 
----
-
-### `FailCheck`
+Use these helpers at the edge of the internal call chain, where you want panic-based propagation converted back into ordinary Go errors.
 
 ```go
-func FailCheck[T any](v T, err error) T
+func CheckFailer(fn func()) error
+func CheckError(fn func() error) error
+
+func CheckValue[T any](fn func() T) (T, error)
+func CheckValue2[T1, T2 any](fn func() (T1, T2)) (T1, T2, error)
+func CheckValue3[T1, T2, T3 any](fn func() (T1, T2, T3)) (T1, T2, T3, error)
+
+func CheckResult[T any](fn func() (T, error)) (T, error)
+func CheckResult2[T1, T2 any](fn func() (T1, T2, error)) (T1, T2, error)
+func CheckResult3[T1, T2, T3 any](fn func() (T1, T2, T3, error)) (T1, T2, T3, error)
+
+func HandleFailer(fn func(), onError func(error))
 ```
 
-Returns `v` if `err == nil`, otherwise calls `FailWith`.
+### Supported Function Shapes
 
----
+The built-in helpers cover the function shapes that come up most often in application code:
 
-## Recovery Boundaries
+* `func()` -> `CheckFailer`
+* `func() error` -> `CheckError`
+* `func() T` -> `CheckValue`
+* `func() (T1, T2)` -> `CheckValue2`
+* `func() (T1, T2, T3)` -> `CheckValue3`
+* `func() (T, error)` -> `CheckResult`
+* `func() (T1, T2, error)` -> `CheckResult2`
+* `func() (T1, T2, T3, error)` -> `CheckResult3`
+* `(T, error)` -> `FailOnError`
+* `(T1, T2, error)` -> `FailOnError2`
+* `(T1, T2, T3, error)` -> `FailOnError3`
 
-### `Guard`
+Support intentionally stops at three non-error return values. Go does not provide a generic abstraction for arbitrary function return arity, so supporting `4+` values would require adding a new exported helper for each additional shape. For those cases, prefer wrapping the values in a struct or dedicated result type and returning fewer parameters through `CheckValue` or `CheckResult`.
 
-```go
-func Guard(fn func()) error
-```
-
-Executes a function and converts `Failer` panics into errors.
-
----
-
-### `GuardValue`
-
-```go
-func GuardValue[T any](fn func() T) (T, error)
-```
-
-Like `Guard`, but returns a value.
-
----
-
-### `GuardErr`
+### Utilities
 
 ```go
-func GuardErr(fn func() error) error
-```
+type Failer struct {
+	Err       error
+	Stack     []byte
+	Timestamp time.Time
+	Context   map[string]any
+}
 
-Protects functions already returning `error`.
-
----
-
-### `GuardResult`
-
-```go
-func GuardResult[T any](fn func() (T, error)) (T, error)
-```
-
-Protects `(T, error)` style functions.
-
----
-
-### `GuardHandle`
-
-```go
-func GuardHandle(fn func(), onError func(error))
-```
-
-Executes a guarded function and forwards recovered failures to a handler.
-
----
-### `GuardGo`
-
-```go
-func GuardGo(fn func(), onError func(error))
-```
-
-Starts a guarded goroutine.
-
-
-## Utilities
-
-### `ConvertToFailer`
-
-```go
 func ConvertToFailer(err error) Failer
-```
-
-Converts any error into a `Failer`.
-
-Existing `Failer` values are preserved.
-
----
-
-### `IsFailer`
-
-```go
 func IsFailer(err error) bool
 ```
 
-Reports whether an error is or wraps a `Failer`.
+Most application code does not need to work with `Failer` directly. It is primarily useful when you want the captured stack trace, timestamp, or structured context.
 
----
+## Example: Adding Context
 
-# Safe Goroutines
-
-One of the most practical uses of `relax` is protecting goroutine entry points.
-
-Instead of:
+`FailWith` can attach structured metadata to the failure as it moves upward:
 
 ```go
-go worker()
+if err := saveUser(user); err != nil {
+	relax.FailWith(err,
+		"user_id", user.ID,
+		"operation", "save_user",
+	)
+}
 ```
 
-use
+If the error is already a `Failer`, the context is merged instead of wrapping it again.
+
+## Working With Underlying Errors
+
+You do not need to know anything about `relax.Failer` to access the original domain error.
+
+`Failer` implements `Unwrap()`, so `errors.As` and `errors.Is` work against the inner error as usual.
 
 ```go
-relax.GuardGo(worker, logger.Error)
+type ValidationError struct {
+	Field string
+}
+
+func (e *ValidationError) Error() string {
+	return fmt.Sprintf("invalid %s", e.Field)
+}
+
+_, err := relax.CheckValue(func() string {
+	relax.FailWith(&ValidationError{Field: "email"})
+	return ""
+})
+
+var target *ValidationError
+if errors.As(err, &target) {
+	fmt.Println(target.Field)
+}
 ```
 
-This guarantees that internal Failer propagation cannot terminate the goroutine silently ,while non-library panics still propagate normally.
+In normal application code this is usually the right approach. Match the original error type you care about and ignore `Failer` completely.
 
-# Design Philosophy
+You only need `Failer` itself when you want access to its extra data:
 
-`relax` intentionally keeps the model small.
+* `Stack`
+* `Timestamp`
+* `Context`
 
-There is:
+## Goroutines
 
-* no framework
-* no dependency injection
-* no custom runtime
-* no logging abstraction
-* no reflection-heavy machinery
+For goroutines, make the goroutine boundary explicit and use `HandleFailer` inside the `go` statement:
 
-The library focuses on one specific problem:
+```go
+go relax.HandleFailer(func() {
+	user := relax.FailOnError(loadUser(id))
+	syncUser(user)
+}, func(err error) {
+	log.Printf("worker failed: %v", err)
+})
+```
 
-> reducing internal error-forwarding boilerplate while preserving structured debugging information.
+This keeps ownership of the goroutine launch in your code while still giving you a safe error boundary.
 
-The implementation follows several strict design rules:
+`HandleFailer` recovers only `Failer` panics and forwards them to `onError`. Any non-`Failer` panic is re-panicked unchanged. That means programmer bugs and runtime faults still fail loudly instead of being silently converted into ordinary errors.
 
-* Only `Failer` panics are recovered.
-* All non-`Failer` panics propagate normally.
-* Errors are never silently swallowed.
-* Stack traces are captured at failure creation.
-* Existing `Failer` values are never double-wrapped.
-* Standard `errors.Is` / `errors.As` interoperability is preserved.
+Passing a nil `onError` handler panics immediately.
 
-This keeps the behavior explicit, predictable, and easy to audit.
+```mermaid
+flowchart TD
+	Start["go HandleFailer(fn, onError)"] --> Run[run worker code]
+	Run -->|success| Exit[goroutine exits]
+	Run -->|FailWith / FailOnError| Panic[panic Failer]
+	Panic --> Recover[HandleFailer recovers]
+	Recover --> Forward["onError(err)"]
+	Run -->|non-Failer panic| Repanic[re-panic unchanged]
+```
 
----
+## Design Guarantees
 
-# Recommended Usage
+`relax` is intentionally small and opinionated.
 
-`relax` works best in:
+It guarantees the following behavior:
+
+* only `Failer` panics are recovered
+* non-`Failer` panics propagate unchanged
+* the original error is preserved through `Unwrap()`
+* stack traces are captured when the failure is created
+* existing `Failer` values are not double-wrapped
+* `errors.Is` and `errors.As` continue to work normally
+
+## When It Fits Well
+
+`relax` is a good fit for:
 
 * service-layer orchestration
-* request pipelines
+* request and command pipelines
+* background jobs and workers
 * CLI execution flows
-* internal business logic
-* goroutine entry points
-* worker/job processing systems
+* deep internal call chains where the middle layers only forward failures
 
-A common pattern is:
-
-1. Use `FailCheck` and `FailWith` internally.
-2. Recover once at a clear boundary with `Guard*`.
-3. Log or translate the returned error.
-
-> +1 `GuardGo` is the recommended entry point for goroutines.
-
----
-
-# When NOT to Use Relax
-
-`relax` is intentionally opinionated.
-
-Avoid it for:
+It is usually a poor fit for:
 
 * exported public APIs
-* low-level libraries consumed by others
-* hot performance-critical paths
-* normal control flow
-* cases where explicit error returns improve clarity
+* low-level reusable libraries consumed by others
+* hot performance-critical loops
+* ordinary control flow where explicit `error` handling is clearer
 
-If a package is expected to behave like standard Go libraries, explicit `error` returns are usually the better choice.
+## Package Examples
 
----
+Runnable examples live in `example_test.go` and are also published through pkg.go.dev.
 
-# Error Context
-
-Structured metadata can be attached to failures:
-
-```go
-relax.FailWith(err,
-    "request_id", requestID,
-    "user_id", userID,
-    "operation", "payment_capture",
-)
-```
-
-This context is preserved across propagation and accessible from the recovered `Failer`.
-
----
-
-# Stack Traces
-
-Each newly created `Failer` captures a stack trace using:
-
-```go
-runtime/debug.Stack()
-```
-
-This makes failures significantly easier to debug in concurrent systems and asynchronous execution flows.
-
----
-
-# Panic Safety
-
-`relax` does **not** attempt to hide programmer errors.
-
-The following still panic normally:
-
-* nil pointer dereferences
-* index out of range
-* type assertion failures
-* explicit `panic("...")`
-* runtime panics
-
-Only panics carrying a `Failer` are recovered.
-
-This separation is intentional and critical for operational safety.
-
----
-
-# Testing
-
-Run all tests:
+## Testing
 
 ```bash
 go test ./...
 ```
 
-Run with verbose output:
-
 ```bash
 go test -v ./...
 ```
-
-Run benchmarks:
 
 ```bash
 go test -bench=. ./...
 ```
 
----
+## License
 
-# Comparison
-
-`relax` is not trying to replace Go's error model.
-
-Instead, it introduces a constrained and explicit propagation mechanism for internal call chains.
-
-Compared to traditional panic/recover usage:
-
-* failures are typed
-* metadata is structured
-* stack traces are preserved
-* recovery boundaries are explicit
-* non-library panics are not swallowed
-
-Compared to repetitive explicit forwarding:
-
-* happy-path code becomes significantly cleaner
-* deeply nested orchestration code becomes easier to read
-* contextual metadata becomes easier to attach consistently
-
----
-
-# Example Boundary Pattern
-
-```go
-func HandleRequest() error {
-    return relax.GuardErr(func() error {
-        user := relax.FailCheck(loadUser())
-
-        if err := validate(user); err != nil{
-            relax.FailWith(err)
-        }
-        // or just use like this:
-        relax.FailWith(process(user))
-
-        return nil
-    })
-}
-```
-
-The internal flow remains linear while the external API still returns standard Go errors.
-
----
-
-# License
-
-MIT — see `LICENSE`.
+MIT - see `LICENSE`.

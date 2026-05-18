@@ -1,6 +1,6 @@
 .PHONY: test lint tidy vet
 
-VERSION := "v0.4.0"
+VERSION := "v0.5.0"
 
 test:
 	go test ./... -race -v
