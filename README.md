@@ -306,6 +306,17 @@ It is usually a poor fit for:
 
 Runnable examples live in `example_test.go` and are also published through pkg.go.dev.
 
+## Reusable Agent Skill
+
+A self-contained AI skill lives in `.github/skills/relax/`. It includes the full API surface so agents can generate correct code without access to this source.
+
+Copy the folder to use it elsewhere:
+
+* `<project>/.github/skills/relax/`
+* `<project>/.agents/skills/relax/`
+* `~/.copilot/skills/relax/`
+* `~/.agents/skills/relax/`
+
 ## Testing
 
 ```bash
